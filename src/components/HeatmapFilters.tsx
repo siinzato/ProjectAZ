@@ -22,6 +22,7 @@ const statusOptions: { value: StatusFilter; label: string }[] = [
 
 const sortOptions: { value: SortOption; label: string }[] = [
   { value: 'nome', label: 'Nome (A-Z)' },
+  { value: 'risk_desc', label: 'Maior risco (score)' },
   { value: 'divergencia_desc', label: 'Maior divergência' },
   { value: 'acuracidade_asc', label: 'Menor acuracidade' },
   { value: 'progresso_desc', label: 'Maior progresso' },

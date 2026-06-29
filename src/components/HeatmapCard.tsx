@@ -1,7 +1,7 @@
 // Heatmap Card Component
 
 import React from 'react';
-import { MapPin, Package, AlertTriangle, CheckCircle, TrendingUp, ChevronRight } from 'lucide-react';
+import { MapPin, Package, AlertTriangle, CheckCircle, TrendingUp, ChevronRight, AlertOctagon, Flag } from 'lucide-react';
 import type { HeatmapArea } from '../lib/heatmapTypes';
 import {
   getCriticalityLevel,
@@ -9,6 +9,10 @@ import {
   getCriticalityTextClass,
   getProgressBgClass,
   calculatePending,
+  calculateRiskScore,
+  getRiskLevel,
+  getRiskLevelLabel,
+  getRiskGradient,
 } from '../lib/heatmapUtils';
 
 interface HeatmapCardProps {
@@ -27,18 +31,47 @@ export const HeatmapCard: React.FC<HeatmapCardProps> = ({ area, onClick, viewMod
   const progress = area.progresso;
   const accuracy = area.acuracidade;
 
+  // Calculate risk score
+  const riskScore = calculateRiskScore(area);
+  const riskLevel = getRiskLevel(riskScore);
+  const riskLabel = getRiskLevelLabel(riskLevel);
+  const riskGradient = getRiskGradient(riskLevel);
+
+  const isHighRisk = riskLevel === 'high' || riskLevel === 'critical';
+  const showPriorityBadge = riskLevel === 'critical';
+
   // Grid View
   if (viewMode === 'grid') {
     return (
       <button
         onClick={() => onClick(area)}
-        className={`${bgClass} border-2 rounded-xl p-4 text-left transition-all hover:shadow-lg hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 group`}
+        className={`${riskGradient} border-2 rounded-xl p-4 text-left transition-all hover:shadow-lg hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500 group relative overflow-hidden`}
       >
+        {/* Priority Badge */}
+        {showPriorityBadge && (
+          <div className="absolute top-2 right-2">
+            <span className="flex items-center gap-1 px-2 py-1 text-xs font-bold bg-red-600 text-white rounded-full animate-pulse">
+              <Flag size={12} />
+              PRIORIDADE
+            </span>
+          </div>
+        )}
+
+        {/* Recontagem Badge */}
+        {area.marcadoRecontagem && (
+          <div className="absolute top-2 left-2">
+            <span className="flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded-full">
+              <AlertOctagon size={12} />
+              Recontagem
+            </span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
-            <MapPin size={18} className={textClass} />
-            <span className="font-bold text-zinc-800 group-hover:text-zinc-900">
+            <MapPin size={18} className={isHighRisk ? 'text-red-600' : textClass} />
+            <span className={`font-bold text-zinc-800 group-hover:text-zinc-900 ${showPriorityBadge ? 'pr-16' : ''}`}>
               {area.nome}
             </span>
           </div>
@@ -46,6 +79,32 @@ export const HeatmapCard: React.FC<HeatmapCardProps> = ({ area, onClick, viewMod
             {area.tipo.toUpperCase()}
           </span>
         </div>
+
+        {/* Risk Score */}
+        {area.progresso > 0 && (
+          <div className={`rounded-lg p-2 mb-3 ${isHighRisk ? 'bg-red-200/50' : 'bg-white/50'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-zinc-500">Score de Risco</span>
+              <div className="flex items-center gap-2">
+                {isHighRisk && <AlertOctagon size={14} className="text-red-600 animate-pulse" />}
+                <span className={`font-bold text-sm ${
+                  riskLevel === 'critical' ? 'text-red-600' :
+                  riskLevel === 'high' ? 'text-orange-600' :
+                  riskLevel === 'medium' ? 'text-amber-600' : 'text-emerald-600'
+                }`}>
+                  {riskScore}
+                </span>
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  riskLevel === 'critical' ? 'bg-red-600 text-white' :
+                  riskLevel === 'high' ? 'bg-orange-500 text-white' :
+                  riskLevel === 'medium' ? 'bg-amber-500 text-white' : 'bg-emerald-500 text-white'
+                }`}>
+                  {riskLevel === 'critical' ? 'CRÍTICO' : riskLevel === 'high' ? 'ALTO' : riskLevel === 'medium' ? 'MÉDIO' : 'BAIXO'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-2 mb-3">
@@ -97,17 +156,35 @@ export const HeatmapCard: React.FC<HeatmapCardProps> = ({ area, onClick, viewMod
     return (
       <button
         onClick={() => onClick(area)}
-        className={`w-full ${bgClass} border-2 rounded-xl p-4 text-left transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-4`}
+        className={`w-full ${riskGradient} border-2 rounded-xl p-4 text-left transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center gap-4 relative`}
       >
+        {/* Priority Badge */}
+        {showPriorityBadge && (
+          <span className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 text-xs font-bold bg-red-600 text-white rounded-full">
+            <Flag size={12} />
+            PRIORIDADE
+          </span>
+        )}
+
         <div className="flex-shrink-0">
-          <div className={`w-12 h-12 rounded-lg ${progressBg} flex items-center justify-center`}>
+          <div className={`w-12 h-12 rounded-lg ${progressBg} flex items-center justify-center relative`}>
             <MapPin size={28} className="text-white" />
+            {isHighRisk && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full flex items-center justify-center animate-pulse">
+                <AlertOctagon size={10} className="text-white" />
+              </div>
+            )}
           </div>
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-bold text-zinc-800">{area.nome}</span>
+            {area.marcadoRecontagem && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-blue-600 text-white rounded-full">
+                Recontagem
+              </span>
+            )}
             <span className={`text-xs px-2 py-0.5 rounded-full bg-white/50 ${textClass}`}>
               {area.tipo.toUpperCase()}
             </span>
@@ -118,6 +195,22 @@ export const HeatmapCard: React.FC<HeatmapCardProps> = ({ area, onClick, viewMod
         </div>
 
         <div className="hidden sm:flex items-center gap-6">
+          {/* Risk Score */}
+          {area.progresso > 0 && (
+            <div className="text-center">
+              <p className="text-xs text-zinc-500">Score Risco</p>
+              <div className="flex items-center gap-1">
+                <span className={`font-bold ${
+                  riskLevel === 'critical' ? 'text-red-600' :
+                  riskLevel === 'high' ? 'text-orange-600' :
+                  riskLevel === 'medium' ? 'text-amber-600' : 'text-emerald-600'
+                }`}>
+                  {riskScore}
+                </span>
+                {isHighRisk && <AlertOctagon size={12} className="text-red-600" />}
+              </div>
+            </div>
+          )}
           <div className="text-center">
             <p className="text-xs text-zinc-500">SKUs</p>
             <p className="font-bold text-zinc-800">{area.totalSku}</p>
@@ -143,17 +236,17 @@ export const HeatmapCard: React.FC<HeatmapCardProps> = ({ area, onClick, viewMod
     );
   }
 
-  // Ranking View
+  // Ranking View (now by risk score)
   return (
     <button
       onClick={() => onClick(area)}
-      className={`w-full ${bgClass} border-2 rounded-xl p-4 text-left transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
+      className={`w-full ${riskGradient} border-2 rounded-xl p-4 text-left transition-all hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500`}
     >
       <div className="flex items-center gap-4">
         {/* Rank Badge */}
         <div
           className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white ${
-            rank === 1 ? 'bg-red-500' : rank === 2 ? 'bg-orange-500' : rank === 3 ? 'bg-amber-500' : 'bg-zinc-400'
+            rank === 1 ? 'bg-red-600' : rank === 2 ? 'bg-orange-500' : rank === 3 ? 'bg-amber-500' : 'bg-zinc-400'
           }`}
         >
           #{rank}
@@ -162,8 +255,21 @@ export const HeatmapCard: React.FC<HeatmapCardProps> = ({ area, onClick, viewMod
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="font-bold text-zinc-800">{area.nome}</span>
+            {area.marcadoRecontagem && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-blue-600 text-white rounded-full">
+                Recontagem
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
+            {/* Risk Score */}
+            <span className={`font-bold ${
+              riskLevel === 'critical' ? 'text-red-600' :
+              riskLevel === 'high' ? 'text-orange-600' : 'text-amber-600'
+            }`}>
+              <AlertOctagon size={14} className="inline mr-1" />
+              Score: {riskScore} ({riskLabel})
+            </span>
             <span className={textClass}>
               <TrendingUp size={14} className="inline mr-1" />
               Acuracidade: {accuracy.toFixed(1)}%

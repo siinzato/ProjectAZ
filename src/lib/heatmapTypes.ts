@@ -4,11 +4,28 @@ export type AreaType = 'linha' | 'rua' | 'vao' | 'setor' | 'excesso';
 
 export type CriticalityLevel = 'success' | 'warning' | 'danger' | 'critical' | 'neutral';
 
+export type RiskLevel = 'none' | 'low' | 'medium' | 'high' | 'critical';
+
 export type ViewMode = 'grid' | 'list' | 'ranking';
 
 export type StatusFilter = 'all' | 'concluido' | 'andamento' | 'pendente';
 
-export type SortOption = 'divergencia_desc' | 'acuracidade_asc' | 'progresso_desc' | 'nome';
+export type SortOption = 'divergencia_desc' | 'acuracidade_asc' | 'progresso_desc' | 'nome' | 'risk_desc';
+
+export interface RiskFactor {
+  name: string;
+  impact: 'alta' | 'média' | 'baixa';
+  value: string;
+}
+
+export interface RiskDiagnosis {
+  riskScore: number;
+  riskLevel: RiskLevel;
+  issues: string[];
+  factors: RiskFactor[];
+  recommendation: string;
+  suggestedActions: string[];
+}
 
 export interface HeatmapArea {
   id: string;
@@ -26,6 +43,7 @@ export interface HeatmapArea {
   observacoes: string;
   produtosDivergentes: string[];
   locaisFisicos: LocalFisico[];
+  marcadoRecontagem?: boolean;
 }
 
 export interface LocalFisico {
@@ -50,4 +68,6 @@ export interface HeatmapStats {
   mediaAcuracidade: number;
   totalAreas: number;
   totalDivergencias: number;
+  mediaGeracaoRisco: number;
+  areasParaRecontagem: number;
 }

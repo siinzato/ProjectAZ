@@ -1,6 +1,6 @@
 // Heatmap Details Modal Component
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   X,
   MapPin,
@@ -15,6 +15,12 @@ import {
   Trash2,
   Save,
   Lock,
+  AlertOctagon,
+  FileDown,
+  RefreshCcw,
+  Flag,
+  TrendingUp,
+  Activity,
 } from 'lucide-react';
 import type { HeatmapArea, LocalFisico } from '../lib/heatmapTypes';
 import {
@@ -23,6 +29,11 @@ import {
   getCriticalityTextClass,
   calculatePending,
   formatDateTime,
+  calculateRiskScore,
+  getRiskLevel,
+  getRiskLevelLabel,
+  getRiskLevelColor,
+  generateDiagnosis,
 } from '../lib/heatmapUtils';
 
 interface HeatmapDetailsModalProps {
@@ -32,6 +43,8 @@ interface HeatmapDetailsModalProps {
   onRequestAdminAccess: () => void;
   isAdmin: boolean;
   onSaveLocais: (areaId: string, locais: LocalFisico[]) => void;
+  onToggleRecontagem: (areaId: string) => void;
+  onExportReport: (area: HeatmapArea) => void;
 }
 
 export const HeatmapDetailsModal: React.FC<HeatmapDetailsModalProps> = ({
@@ -41,6 +54,8 @@ export const HeatmapDetailsModal: React.FC<HeatmapDetailsModalProps> = ({
   onRequestAdminAccess,
   isAdmin,
   onSaveLocais,
+  onToggleRecontagem,
+  onExportReport,
 }) => {
   const [editMode, setEditMode] = useState(false);
   const [locaisEditados, setLocaisEditados] = useState<LocalFisico[]>([]);
@@ -52,6 +67,13 @@ export const HeatmapDetailsModal: React.FC<HeatmapDetailsModalProps> = ({
   const bgClass = getCriticalityBgClass(criticality);
   const textClass = getCriticalityTextClass(criticality);
   const pending = calculatePending(area.totalSku, area.concluidos);
+
+  // Calculate risk score and diagnosis
+  const riskScore = calculateRiskScore(area);
+  const riskLevel = getRiskLevel(riskScore);
+  const riskLabel = getRiskLevelLabel(riskLevel);
+  const riskColorClass = getRiskLevelColor(riskLevel);
+  const diagnosis = useMemo(() => generateDiagnosis(area), [area]);
 
   const handleStartEdit = () => {
     if (isAdmin) {
@@ -125,8 +147,13 @@ export const HeatmapDetailsModal: React.FC<HeatmapDetailsModalProps> = ({
         <div className={`${bgClass} border-b-2 p-5`}>
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-white/50 rounded-lg">
+              <div className="p-2 bg-white/50 rounded-lg relative">
                 <MapPin size={24} className={textClass} />
+                {area.marcadoRecontagem && (
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center">
+                    <RefreshCcw size={10} className="text-white" />
+                  </div>
+                )}
               </div>
               <div>
                 <h3 className="text-xl font-bold text-zinc-800">{area.nome}</h3>
@@ -150,17 +177,129 @@ export const HeatmapDetailsModal: React.FC<HeatmapDetailsModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5">
-          {/* Status Badge */}
-          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${bgClass} mb-4`}>
-            {criticality === 'success' ? (
-              <CheckCircle size={16} className="text-emerald-700" />
-            ) : criticality === 'neutral' ? null : (
-              <AlertTriangle size={16} className="text-red-700" />
-            )}
-            <span className={`font-medium ${textClass}`}>
-              {criticalityLabels[criticality]}
-            </span>
-          </div>
+          {/* Risk Score Section */}
+          {area.progresso > 0 && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-semibold text-zinc-700 flex items-center gap-2">
+                  <AlertOctagon size={18} className="text-zinc-500" />
+                  Score de Risco
+                </h4>
+                {area.marcadoRecontagem && (
+                  <span className="flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                    <RefreshCcw size={14} />
+                    Marcado para recontagem
+                  </span>
+                )}
+              </div>
+
+              <div className={`rounded-xl p-4 border-2 ${
+                riskLevel === 'critical' ? 'bg-red-50 border-red-300' :
+                riskLevel === 'high' ? 'bg-orange-50 border-orange-300' :
+                riskLevel === 'medium' ? 'bg-amber-50 border-amber-300' : 'bg-emerald-50 border-emerald-300'
+              }`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`text-4xl font-black ${
+                      riskLevel === 'critical' ? 'text-red-600' :
+                      riskLevel === 'high' ? 'text-orange-600' :
+                      riskLevel === 'medium' ? 'text-amber-600' : 'text-emerald-600'
+                    }`}>
+                      {riskScore}
+                    </div>
+                    <div>
+                      <div className={`text-sm font-bold ${
+                        riskLevel === 'critical' ? 'text-red-600' :
+                        riskLevel === 'high' ? 'text-orange-600' :
+                        riskLevel === 'medium' ? 'text-amber-600' : 'text-emerald-600'
+                      }`}>
+                        {riskLabel.toUpperCase()}
+                      </div>
+                      <div className="text-xs text-zinc-500">de 0 a 100</div>
+                    </div>
+                  </div>
+                  {(riskLevel === 'critical' || riskLevel === 'high') && (
+                    <div className="flex items-center gap-1 px-3 py-1 bg-red-600 text-white rounded-full text-sm font-bold animate-pulse">
+                      <Flag size={14} />
+                      PRIORIDADE
+                    </div>
+                  )}
+                </div>
+
+                {/* Risk Factors */}
+                {diagnosis.factors.length > 0 && (
+                  <div className="border-t border-white/50 pt-3 mt-3">
+                    <p className="text-xs text-zinc-500 mb-2">Fatores de risco:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnosis.factors.map((factor, i) => (
+                        <span
+                          key={i}
+                          className={`px-2 py-1 rounded text-xs font-medium ${
+                            factor.impact === 'alta' ? 'bg-red-200 text-red-700' :
+                            factor.impact === 'média' ? 'bg-amber-200 text-amber-700' :
+                            'bg-zinc-200 text-zinc-600'
+                          }`}
+                        >
+                          {factor.name}: {factor.value}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Automatic Diagnosis */}
+          {area.progresso > 0 && (
+            <div className="mb-6">
+              <h4 className="font-semibold text-zinc-700 flex items-center gap-2 mb-3">
+                <Activity size={18} className="text-zinc-500" />
+                Diagnóstico Automático
+              </h4>
+
+              <div className="bg-zinc-50 rounded-xl p-4">
+                {/* Issues */}
+                {diagnosis.issues.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs text-zinc-500 mb-2">Problemas identificados:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {diagnosis.issues.map((issue, i) => (
+                        <span
+                          key={i}
+                          className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium"
+                        >
+                          <AlertTriangle size={12} />
+                          {issue}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommendation */}
+                <div className="bg-white rounded-lg p-3 border border-zinc-200">
+                  <p className="text-xs text-zinc-500 mb-1">Recomendação:</p>
+                  <p className="text-sm text-zinc-700">{diagnosis.recommendation}</p>
+                </div>
+
+                {/* Suggested Actions */}
+                <div className="mt-3">
+                  <p className="text-xs text-zinc-500 mb-2">Ações sugeridas:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {diagnosis.suggestedActions.map((action, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium"
+                      >
+                        {action}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-3 mb-6">
@@ -346,9 +485,33 @@ export const HeatmapDetailsModal: React.FC<HeatmapDetailsModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
+        {/* Footer Actions */}
+        <div className="border-t border-zinc-200 p-4 bg-zinc-50">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => onToggleRecontagem(area.id)}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition ${
+                area.marcadoRecontagem
+                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  : 'bg-white border-2 border-blue-300 text-blue-700 hover:bg-blue-50'
+              }`}
+            >
+              <RefreshCcw size={18} />
+              {area.marcadoRecontagem ? 'Remover da Fila' : 'Marcar para Recontagem'}
+            </button>
+            <button
+              onClick={() => onExportReport(area)}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-900 text-white rounded-lg font-medium hover:bg-zinc-800 transition"
+            >
+              <FileDown size={18} />
+              Exportar Relatório
+            </button>
+          </div>
+        </div>
+
+        {/* Edit Footer */}
         {editMode && (
-          <div className="border-t border-zinc-200 p-4 bg-zinc-50 flex justify-between">
+          <div className="border-t border-zinc-200 p-4 bg-zinc-100 flex justify-between">
             <button
               onClick={handleCancel}
               className="px-4 py-2 text-zinc-600 hover:bg-zinc-200 rounded-lg transition"
