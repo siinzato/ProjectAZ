@@ -1,57 +1,139 @@
 // Product Import Utilities
 
-import type { ProductRaw, ProductValidated, ImportError, ImportSummary } from './productImportTypes';
+import type { ProductRaw, ProductValidated, ImportError, ImportSummary, ColumnMapping, DetectedColumn, ProductFromDB } from './productImportTypes';
 
-// Normalize column name (case insensitive)
-const normalizeColumnName = (name: string): string => {
-  const lower = name.toLowerCase().trim();
-  if (lower === 'nome' || lower === 'name') return 'name';
-  if (lower === 'sku') return 'sku';
-  if (lower === 'ean' || lower === 'barcode' || lower === 'codbarras') return 'ean';
-  if (lower === 'local' || lower === 'location' || lower === 'localização') return 'location';
-  if (lower === 'preço' || lower === 'preco' || lower === 'price' || lower === 'valor') return 'price';
-  return lower;
+// Standard field names
+export const STANDARD_FIELDS = [
+  { key: 'name', label: 'Nome', required: true, aliases: ['nome', 'name', 'produto', 'descricao', 'description'] },
+  { key: 'sku', label: 'SKU', required: true, aliases: ['sku', 'codigo', 'code', 'item', 'ref', 'referencia'] },
+  { key: 'ean', label: 'EAN', required: false, aliases: ['ean', 'barcode', 'codigobarras', 'barras', 'gtin', 'upc'] },
+  { key: 'location', label: 'Local', required: false, aliases: ['local', 'location', 'localizacao', 'endereco', 'posicao', 'rua', 'vao'] },
+  { key: 'price', label: 'Preço', required: false, aliases: ['preço', 'preco', 'price', 'valor', 'unitario', 'unit'] },
+];
+
+// Auto-detect column mappings
+export const detectColumnMappings = (headers: string[]): DetectedColumn[] => {
+  const detected: DetectedColumn[] = [];
+
+  for (const header of headers) {
+    const headerLower = header.toLowerCase().trim();
+    let detectedField: string | null = null;
+    let confidence: 'high' | 'medium' | 'low' | 'none' = 'none';
+    let sampleValues: string[] = [];
+
+    for (const field of STANDARD_FIELDS) {
+      // Exact match
+      if (field.aliases.some(alias => alias === headerLower)) {
+        detectedField = field.key;
+        confidence = 'high';
+        break;
+      }
+      // Contains match
+      if (field.aliases.some(alias => headerLower.includes(alias) || alias.includes(headerLower))) {
+        detectedField = field.key;
+        confidence = 'medium';
+      }
+      // Levenshtein distance match (fuzzy)
+      if (!detectedField) {
+        for (const alias of field.aliases) {
+          const distance = levenshteinDistance(headerLower, alias);
+          if (distance <= 2) {
+            detectedField = field.key;
+            confidence = 'low';
+          }
+        }
+      }
+    }
+
+    detected.push({
+      name: header,
+      sampleValues,
+      detectedField,
+      confidence,
+    });
+  }
+
+  return detected;
 };
 
-// Normalize raw data from spreadsheet
-export const normalizeProductData = (raw: ProductRaw, rowIndex: number): { data: Partial<ProductValidated>; row: number } => {
-  const normalized: Partial<ProductValidated> = {};
+// Simple Levenshtein distance for fuzzy matching
+const levenshteinDistance = (a: string, b: string): number => {
+  const matrix: number[][] = [];
 
-  // Map all possible column names to normalized names
-  const mapping: Record<string, string> = {
-    name: 'name',
-    nome: 'name',
-    sku: 'sku',
-    ean: 'ean',
-    local: 'location',
-    location: 'location',
-    price: 'price',
-    preço: 'price',
-    preco: 'price',
-    valor: 'price',
-  };
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
 
-  // Process each column
-  for (const [key, value] of Object.entries(raw)) {
-    const normalizedKey = normalizeColumnName(key);
-    if (mapping[normalizedKey]) {
-      const targetField = mapping[normalizedKey];
-      if (targetField === 'price') {
-        normalized[targetField] = parsePrice(value);
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
       } else {
-        normalized[targetField] = cleanText(value);
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
       }
     }
   }
 
-  return { data: normalized, row: rowIndex };
+  return matrix[b.length][a.length];
+};
+
+// Create suggested mapping from detected columns
+export const suggestMapping = (detected: DetectedColumn[]): ColumnMapping => {
+  const mapping: ColumnMapping = {
+    name: null,
+    sku: null,
+    ean: null,
+    location: null,
+    price: null,
+  };
+
+  for (const col of detected) {
+    if (col.detectedField && col.confidence !== 'none') {
+      (mapping as Record<string, string | null>)[col.detectedField] = col.name;
+    }
+  }
+
+  return mapping;
+};
+
+// Apply column mapping to raw data
+export const applyColumnMapping = (
+  rawData: ProductRaw[],
+  mapping: ColumnMapping
+): ProductRaw[] => {
+  return rawData.map(row => {
+    const mapped: ProductRaw = {};
+
+    const fieldMapping: Record<string, string> = {
+      name: mapping.name || 'name',
+      sku: mapping.sku || 'sku',
+      ean: mapping.ean || 'ean',
+      location: mapping.location || 'location',
+      price: mapping.price || 'price',
+    };
+
+    for (const [targetField, sourceCol] of Object.entries(fieldMapping)) {
+      if (sourceCol && row[sourceCol] !== undefined) {
+        mapped[targetField] = row[sourceCol];
+      }
+    }
+
+    return mapped;
+  });
 };
 
 // Clean and trim text
 const cleanText = (value: string | number | undefined | null): string => {
   if (value === null || value === undefined) return '';
   const str = String(value).trim();
-  // Remove extra spaces
   return str.replace(/\s+/g, ' ');
 };
 
@@ -59,27 +141,18 @@ const cleanText = (value: string | number | undefined | null): string => {
 const parsePrice = (value: string | number | undefined | null): number | null => {
   if (value === null || value === undefined || value === '') return null;
 
-  // If already a number
   if (typeof value === 'number') {
     return isNaN(value) ? null : Math.round(value * 100) / 100;
   }
 
-  // Clean string
   const cleaned = String(value).trim();
-
-  // Handle empty
   if (!cleaned) return null;
 
-  // Replace comma with dot for decimal
-  // Handle cases like "1.234,56" (Brazilian format) or "1,234.56" (US format)
   let normalized = cleaned;
 
-  // If has both comma and dot, assume Brazilian format (1.234,56)
   if (normalized.includes(',') && normalized.includes('.')) {
-    // Remove thousand separators (dots) and replace comma with dot
     normalized = normalized.replace(/\./g, '').replace(',', '.');
   } else if (normalized.includes(',')) {
-    // Only comma, treat as decimal separator
     normalized = normalized.replace(',', '.');
   }
 
@@ -89,15 +162,17 @@ const parsePrice = (value: string | number | undefined | null): number | null =>
 
 // Validate a single product
 export const validateProduct = (
-  normalized: Partial<ProductValidated>,
-  existingSkus: Set<string>,
+  mappedData: ProductRaw,
+  existingProducts: Map<string, ProductFromDB>,
   rowIndex: number
 ): ProductValidated => {
   const errors: string[] = [];
 
-  // Check required fields
-  const sku = normalized.sku || '';
-  const name = normalized.name || '';
+  const sku = cleanText(mappedData.sku);
+  const name = cleanText(mappedData.name);
+  const ean = mappedData.ean ? String(mappedData.ean).trim() : null;
+  const location = cleanText(mappedData.location);
+  const price = parsePrice(mappedData.price);
 
   // Validate SKU (required)
   if (!sku) {
@@ -110,77 +185,85 @@ export const validateProduct = (
   }
 
   // Validate price if present
-  if (normalized.price !== null && normalized.price !== undefined) {
-    if (normalized.price < 0) {
-      errors.push('Preço não pode ser negativo');
-    }
+  if (price !== null && price < 0) {
+    errors.push('Preço não pode ser negativo');
   }
 
-  // Normalize SKU and EAN as text (preserve leading zeros)
-  const cleanSku = sku ? String(sku).trim() : '';
-  const cleanEan = normalized.ean ? String(normalized.ean).trim() : null;
-
-  // Determine if new or update
   let isNew = false;
   let status: 'new' | 'update' | 'error' = 'new';
+  let oldData: ProductValidated['oldData'] = undefined;
+  let changesDetected: string[] = [];
 
   if (errors.length > 0) {
     status = 'error';
-  } else if (existingSkus.has(cleanSku.toUpperCase())) {
-    status = 'update';
-    isNew = false;
   } else {
-    status = 'new';
-    isNew = true;
+    const existing = existingProducts.get(sku.toUpperCase());
+    if (existing) {
+      status = 'update';
+      isNew = false;
+      oldData = {
+        name: existing.name,
+        sku: existing.sku,
+        ean: existing.ean,
+        location: existing.location,
+        price: existing.price,
+      };
+
+      // Detect changes
+      if (name !== existing.name) changesDetected.push('Nome');
+      if (ean !== existing.ean) changesDetected.push('EAN');
+      if (location !== existing.location) changesDetected.push('Local');
+      if (price !== existing.price) changesDetected.push('Preço');
+    } else {
+      status = 'new';
+      isNew = true;
+    }
   }
 
   return {
     name: name || '',
-    sku: cleanSku,
-    ean: cleanEan,
-    location: normalized.location || null,
-    price: normalized.price ?? null,
+    sku: sku,
+    ean: ean || null,
+    location: location || null,
+    price: price,
     isNew,
     isValid: errors.length === 0,
     error: errors.length > 0 ? errors.join('; ') : undefined,
     status,
+    oldData,
+    changesDetected: changesDetected.length > 0 ? changesDetected : undefined,
   };
 };
 
 // Parse CSV content
-export const parseCSV = (content: string): ProductRaw[] => {
+export const parseCSV = (content: string): { headers: string[]; rows: ProductRaw[] } => {
   const lines = content.split(/\r?\n/).filter(line => line.trim());
-  if (lines.length === 0) return [];
+  if (lines.length === 0) return { headers: [], rows: [] };
 
-  // Detect delimiter (comma or semicolon)
-  const firstLine = lines[0];
-  const delimiter = firstLine.includes(';') ? ';' : ',';
-
-  // Parse header
+  const delimiter = lines[0].includes(';') ? ';' : ',';
   const headers = parseCSVLine(lines[0], delimiter);
 
-  // Parse data rows
-  const products: ProductRaw[] = [];
+  const rows: ProductRaw[] = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
     if (!line.trim()) continue;
 
     const values = parseCSVLine(line, delimiter);
-    const product: ProductRaw = {};
+    const row: ProductRaw = {};
 
     headers.forEach((header, index) => {
       if (index < values.length) {
-        product[header] = values[index];
+        row[header] = values[index];
       }
     });
 
-    products.push(product);
+    rows.push(row);
   }
 
-  return products;
+  return { headers, rows };
 };
 
-// Parse a single CSV line (handles quoted values)
+// Parse a single CSV line
 const parseCSVLine = (line: string, delimiter: string): string[] => {
   const values: string[] = [];
   let current = '';
@@ -191,11 +274,9 @@ const parseCSVLine = (line: string, delimiter: string): string[] => {
 
     if (char === '"') {
       if (inQuotes && line[i + 1] === '"') {
-        // Escaped quote
         current += '"';
         i++;
       } else {
-        // Toggle quote mode
         inQuotes = !inQuotes;
       }
     } else if (char === delimiter && !inQuotes) {
@@ -210,21 +291,24 @@ const parseCSVLine = (line: string, delimiter: string): string[] => {
   return values.map(v => v.trim());
 };
 
-// Convert raw data to validated products
+// Process raw products with mapping
 export const processRawProducts = (
-  rawProducts: ProductRaw[],
-  existingSkus: Set<string>
+  rawData: ProductRaw[],
+  existingProducts: Map<string, ProductFromDB>,
+  mapping: ColumnMapping
 ): { products: ProductValidated[]; errors: ImportError[] } => {
+  // Apply mapping first
+  const mappedData = applyColumnMapping(rawData, mapping);
+
   const products: ProductValidated[] = [];
   const errors: ImportError[] = [];
 
-  rawProducts.forEach((raw, index) => {
-    const { data: normalized, row } = normalizeProductData(raw, index + 2); // +2 because of header
-    const validated = validateProduct(normalized, existingSkus, row);
+  mappedData.forEach((data, index) => {
+    const validated = validateProduct(data, existingProducts, index + 2);
 
     if (validated.status === 'error') {
       errors.push({
-        row,
+        row: index + 2,
         sku: validated.sku || undefined,
         name: validated.name || undefined,
         error: validated.error || 'Erro desconhecido',
@@ -246,6 +330,7 @@ export const calculateImportSummary = (products: ProductValidated[]): ImportSumm
   updateProducts: products.filter(p => p.status === 'update').length,
   skippedRows: products.filter(p => p.status === 'skip').length,
   importedCount: 0,
+  productsWithChanges: products.filter(p => p.changesDetected && p.changesDetected.length > 0).length,
 });
 
 // Export errors to CSV
@@ -266,9 +351,28 @@ export const exportErrorsToCSV = (errors: ImportError[]): string => {
   return lines.join('\n');
 };
 
+// Export products to CSV
+export const exportProductsToCSV = (products: ProductValidated[]): string => {
+  const headers = ['Nome', 'SKU', 'EAN', 'Local', 'Preço', 'Status'];
+  const lines = [headers.join(';')];
+
+  products.forEach(product => {
+    const line = [
+      product.name,
+      product.sku,
+      product.ean || '',
+      product.location || '',
+      product.price !== null ? product.price.toFixed(2) : '',
+      product.status === 'new' ? 'Novo' : product.status === 'update' ? 'Atualização' : 'Erro',
+    ].map(v => String(v).includes(';') ? `"${v}"` : v);
+    lines.push(line.join(';'));
+  });
+
+  return lines.join('\n');
+};
+
 // Download a string as file
 export const downloadFile = (content: string, filename: string, type: string = 'text/csv;charset=utf-8') => {
-  // Add BOM for Excel compatibility
   const bom = '\uFEFF';
   const blob = new Blob([bom + content], { type });
   const url = URL.createObjectURL(blob);
@@ -287,13 +391,28 @@ export const formatPrice = (price: number | null): string => {
   return price.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-// Check if two products are identical
-export const productsAreIdentical = (a: ProductValidated, b: ProductValidated): boolean => {
-  return (
-    a.name === b.name &&
-    a.sku === b.sku &&
-    a.ean === b.ean &&
-    a.location === b.location &&
-    a.price === b.price
-  );
+// Format file size
+export const formatFileSize = (bytes: number | null): string => {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
+// Format date for display
+export const formatDateTime = (dateStr: string): string => {
+  if (!dateStr) return 'N/A';
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return 'N/A';
+  }
 };

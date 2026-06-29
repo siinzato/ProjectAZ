@@ -40,11 +40,14 @@ import {
   Map,
   FileSpreadsheet,
   ChevronRight,
+  Undo2,
   type LucideIcon
 } from 'lucide-react';
 import { supabase, type BrandData, type TopVenda, type CustomKPI, type InventorySnapshot, type InventoryBrandHistory } from './lib/supabase';
 import { HeatmapEstoque } from './components/HeatmapEstoque';
 import { ProductImportPage } from './components/ProductImportPage';
+import { ImportedProductsPage } from './components/ImportedProductsPage';
+import { ImportHistoryPage } from './components/ImportHistoryPage';
 
 interface StatCardProps {
   title: string;
@@ -884,7 +887,7 @@ export default function App() {
             <div className="relative group">
               <button
                 className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 ${
-                  activeTab === 'heatmap' || activeTab === 'import' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  ['heatmap', 'import', 'products', 'import-history'].includes(activeTab) ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                 }`}
               >
                 <Map size={16}/>
@@ -894,7 +897,7 @@ export default function App() {
               </button>
 
               {/* Submenu */}
-              <div className="absolute left-0 top-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all min-w-[180px] z-20">
+              <div className="absolute left-0 top-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all min-w-[200px] z-20">
                 <button
                   onClick={() => setActiveTab('heatmap')}
                   className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-t-lg transition ${
@@ -906,13 +909,33 @@ export default function App() {
                 </button>
                 <div className="h-px bg-zinc-700" />
                 <button
+                  onClick={() => setActiveTab('products')}
+                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 transition ${
+                    activeTab === 'products' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                >
+                  <Package size={16} />
+                  Produtos Importados
+                </button>
+                <div className="h-px bg-zinc-700" />
+                <button
                   onClick={() => setActiveTab('import')}
-                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-b-lg transition ${
+                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 transition ${
                     activeTab === 'import' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
                   }`}
                 >
                   <FileSpreadsheet size={16} />
                   Importar Produtos
+                </button>
+                <div className="h-px bg-zinc-700" />
+                <button
+                  onClick={() => setActiveTab('import-history')}
+                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-b-lg transition ${
+                    activeTab === 'import-history' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                >
+                  <History size={16} />
+                  Historico de Importacoes
                 </button>
               </div>
             </div>
@@ -963,9 +986,73 @@ export default function App() {
           />
         )}
 
+        {/* ABA PRODUTOS IMPORTADOS */}
+        {activeTab === 'products' && (
+          <ImportedProductsPage
+            onBack={() => setActiveTab('dashboard')}
+            isAdmin={isLoggedIn}
+          />
+        )}
+
         {/* ABA IMPORTAR PRODUTOS */}
         {activeTab === 'import' && (
-          <ProductImportPage onBack={() => setActiveTab('dashboard')} />
+          <ProductImportPage
+            onBack={() => setActiveTab('dashboard')}
+            isAdmin={isLoggedIn}
+            onRequestAdmin={() => setActiveTab('admin')}
+          />
+        )}
+
+        {/* ABA HISTORICO DE IMPORTACOES */}
+        {activeTab === 'import-history' && (
+          <ImportHistoryPage
+            onBack={() => setActiveTab('dashboard')}
+            isAdmin={isLoggedIn}
+            onUndoImport={async (importId: string) => {
+              // Undo import logic
+              try {
+                // Get audit records for this import
+                const { data: auditRecords, error: auditError } = await supabase
+                  .from('import_products_audit')
+                  .select('*')
+                  .eq('import_id', importId);
+
+                if (auditError) throw auditError;
+
+                // Process each audit record
+                for (const record of auditRecords || []) {
+                  if (record.action === 'insert') {
+                    // Delete the inserted product
+                    await supabase.from('products').delete().eq('id', record.product_id);
+                  } else if (record.action === 'update') {
+                    // Restore the old data
+                    await supabase.from('products').update({
+                      name: record.old_data.name,
+                      sku: record.old_data.sku,
+                      ean: record.old_data.ean,
+                      location: record.old_data.location,
+                      price: record.old_data.price,
+                    }).eq('id', record.product_id);
+                  }
+                }
+
+                // Mark import as undone
+                await supabase
+                  .from('import_history')
+                  .update({
+                    status: 'undone',
+                    undone_at: new Date().toISOString(),
+                  })
+                  .eq('id', importId);
+
+                // Delete audit records
+                await supabase.from('import_products_audit').delete().eq('import_id', importId);
+              } catch (err) {
+                console.error('Error undoing import:', err);
+                throw err;
+              }
+            }}
+          />
         )}
 
         {/* ABA DASHBOARD */}

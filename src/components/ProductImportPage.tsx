@@ -1,12 +1,13 @@
-// Product Import Page Component
+// Product Import Page Component - Full Featured
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { FileSpreadsheet, ArrowLeft, HelpCircle, AlertCircle } from 'lucide-react';
+import { FileSpreadsheet, ArrowLeft, Lock } from 'lucide-react';
 import { ProductUploadArea } from './ProductUploadArea';
+import { ColumnMappingWizard } from './ColumnMappingWizard';
 import { ProductImportPreview } from './ProductImportPreview';
 import { ProductImportProgress } from './ProductImportProgress';
 import { ProductImportSummary } from './ProductImportSummary';
-import type { ProductValidated, ImportSummary, ImportProgress, ImportError, ImportStatus } from '../lib/productImportTypes';
+import type { ProductValidated, ImportSummary, ImportProgress, ImportError, ImportStatus, ColumnMapping, ProductFromDB } from '../lib/productImportTypes';
 import {
   parseCSV,
   processRawProducts,
@@ -16,9 +17,15 @@ import { supabase } from '../lib/supabase';
 
 interface ProductImportPageProps {
   onBack: () => void;
+  isAdmin: boolean;
+  onRequestAdmin: () => void;
 }
 
-export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) => {
+export const ProductImportPage: React.FC<ProductImportPageProps> = ({
+  onBack,
+  isAdmin,
+  onRequestAdmin,
+}) => {
   const [status, setStatus] = useState<ImportStatus>('upload');
   const [isReading, setIsReading] = useState(false);
   const [products, setProducts] = useState<ProductValidated[]>([]);
@@ -31,97 +38,127 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
     status: 'idle',
     message: '',
   });
-  const [existingSkus, setExistingSkus] = useState<Set<string>>(new Set());
+  const [existingProducts, setExistingProducts] = useState<Map<string, ProductFromDB>>(new Map());
 
-  // Load existing SKUs from database
-  const loadExistingSkus = async (): Promise<Set<string>> => {
+  // File data
+  const [currentFile, setCurrentFile] = useState<File | null>(null);
+  const [fileContent, setFileContent] = useState<string>('');
+  const [rawHeaders, setRawHeaders] = useState<string[]>([]);
+  const [rawRows, setRawRows] = useState<Array<{ [key: string]: string | number | undefined }>>([]);
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping | null>(null);
+
+  // Load existing products from database
+  const loadExistingProducts = async (): Promise<Map<string, ProductFromDB>> => {
     try {
       const { data, error } = await supabase
         .from('products')
-        .select('sku');
+        .select('*');
 
       if (error) throw error;
 
-      const skus = new Set<string>();
-      data?.forEach((item: { sku: string }) => {
-        skus.add(item.sku.toUpperCase());
+      const productsMap = new Map<string, ProductFromDB>();
+      data?.forEach((item: ProductFromDB) => {
+        productsMap.set(item.sku.toUpperCase(), item);
       });
 
-      return skus;
+      return productsMap;
     } catch (err) {
-      console.error('Error loading existing SKUs:', err);
-      return new Set();
+      console.error('Error loading existing products:', err);
+      return new Map();
     }
   };
 
   // Handle file selection
   const handleFileSelect = useCallback(async (file: File) => {
+    // Check admin
+    if (!isAdmin) {
+      alert('Voce precisa estar logado como admin para importar produtos.');
+      onRequestAdmin();
+      return;
+    }
+
     setIsReading(true);
     setStatus('upload');
 
     try {
-      // Load existing SKUs
-      const skus = await loadExistingSkus();
-      setExistingSkus(skus);
-
-      // Read file
       const extension = file.name.split('.').pop()?.toLowerCase();
-      let rawProducts: Array<{ [key: string]: string | number | undefined }> = [];
+      let headers: string[] = [];
+      let rows: Array<{ [key: string]: string | number | undefined }> = [];
+      let content = '';
 
       if (extension === 'csv') {
-        // Parse CSV
-        const content = await file.text();
-        rawProducts = parseCSV(content);
+        content = await file.text();
+        const parsed = parseCSV(content);
+        headers = parsed.headers;
+        rows = parsed.rows;
       } else {
-        // Parse Excel using xlsx library (we'll use a simple approach with SheetJS)
-        // For now, we'll need to dynamically import it or use a different approach
-        // Let's use a workaround - read as array buffer and parse
-        rawProducts = await parseExcel(file);
+        // Parse Excel
+        const XLSX = await import('xlsx');
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        content = jsonData.map(row => (row as string[]).join(';')).join('\n');
+
+        if (jsonData.length > 0) {
+          headers = (jsonData[0] as string[]).map(String);
+          rows = (jsonData.slice(1) as string[][]).map(row => {
+            const obj: { [key: string]: string | number | undefined } = {};
+            headers.forEach((header, idx) => {
+              obj[header] = row[idx];
+            });
+            return obj;
+          });
+        }
       }
 
-      if (rawProducts.length === 0) {
-        alert('Nenhuma linha encontrada na planilha. Verifique se o arquivo está vazio.');
+      if (rows.length === 0) {
+        alert('Nenhuma linha encontrada na planilha.');
         setIsReading(false);
         return;
       }
 
-      // Process and validate products
-      const { products: validated, errors: importErrors } = processRawProducts(rawProducts, skus);
-
-      // Filter out empty rows (rows with only whitespace)
-      const nonEmptyEntries = validated.filter(p =>
-        p.sku?.trim() || p.name?.trim() || p.ean?.trim()
-      );
-
-      setProducts(nonEmptyEntries);
-      setErrors(importErrors);
-      setSummary(calculateImportSummary(nonEmptyEntries));
-      setStatus('preview');
+      setCurrentFile(file);
+      setFileContent(content);
+      setRawHeaders(headers);
+      setRawRows(rows);
+      setIsReading(false);
+      setStatus('mapping');
     } catch (err) {
       console.error('Error reading file:', err);
-      alert('Erro ao ler o arquivo. Verifique se o formato está correto.');
+      alert('Erro ao ler o arquivo.');
       setStatus('upload');
     }
 
     setIsReading(false);
-  }, []);
+  }, [isAdmin, onRequestAdmin]);
 
-  // Parse Excel file (using SheetJS via CDN or similar)
-  const parseExcel = async (file: File): Promise<Array<{ [key: string]: string | number | undefined }>> => {
-    // We'll use the XLSX library that we need to install
-    // For now, return empty array and show message
-    const XLSX = await import('xlsx');
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array' });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet);
-    return jsonData as Array<{ [key: string]: string | number | undefined }>;
-  };
+  // Handle column mapping confirmation
+  const handleMappingConfirm = useCallback(async (mapping: ColumnMapping) => {
+    setColumnMapping(mapping);
+    setStatus('validating');
+
+    // Load existing products
+    const existing = await loadExistingProducts();
+    setExistingProducts(existing);
+
+    // Process with mapping
+    const { products: validated, errors: importErrors } = processRawProducts(rawRows, existing, mapping);
+
+    const nonEmptyEntries = validated.filter(p =>
+      p.sku?.trim() || p.name?.trim()
+    );
+
+    setProducts(nonEmptyEntries);
+    setErrors(importErrors);
+    setSummary(calculateImportSummary(nonEmptyEntries));
+    setStatus('preview');
+  }, [rawRows]);
 
   // Confirm import
   const handleConfirmImport = useCallback(async () => {
-    if (!summary || summary.validProducts === 0) return;
+    if (!summary || summary.validProducts === 0 || !columnMapping || !isAdmin) return;
 
     setStatus('importing');
     const validProducts = products.filter(p => p.isValid);
@@ -139,14 +176,21 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
     let newCount = 0;
     let updateCount = 0;
 
-    // Import in batches of 50
+    // Create import history record first
+    const importRecordId = await createImportHistory();
+
+    if (!importRecordId) {
+      alert('Erro ao criar registro de importacao');
+      setStatus('preview');
+      return;
+    }
+
     const batchSize = 50;
     const batches = Math.ceil(total / batchSize);
 
     for (let i = 0; i < batches; i++) {
       const batch = validProducts.slice(i * batchSize, (i + 1) * batchSize);
 
-      // Separate new and update
       const newProducts = batch.filter(p => p.isNew);
       const updateProducts = batch.filter(p => !p.isNew);
 
@@ -160,22 +204,36 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
           price: p.price || null,
         }));
 
-        const { error: insertError } = await supabase
+        const { data: insertedProducts, error: insertError } = await supabase
           .from('products')
-          .insert(insertData);
+          .insert(insertData)
+          .select('id, sku');
 
-        if (insertError) {
-          console.error('Insert error:', insertError);
-          // Continue with next batch
-        } else {
+        if (!insertError && insertedProducts) {
+          // Record audit
+          for (const inserted of insertedProducts) {
+            const product = newProducts.find(p => p.sku === inserted.sku);
+            if (product) {
+              await supabase.from('import_products_audit').insert({
+                import_id: importRecordId,
+                product_id: inserted.id,
+                sku: product.sku,
+                action: 'insert',
+                old_data: null,
+                new_data: { name: product.name, sku: product.sku, ean: product.ean, location: product.location, price: product.price },
+              });
+            }
+          }
           imported += newProducts.length;
           newCount += newProducts.length;
         }
       }
 
       // Update existing products
-      if (updateProducts.length > 0) {
-        for (const product of updateProducts) {
+      for (const product of updateProducts) {
+        const oldProduct = existingProducts.get(product.sku.toUpperCase());
+
+        if (oldProduct) {
           const { error: updateError } = await supabase
             .from('products')
             .update({
@@ -185,9 +243,19 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
               price: product.price || null,
               updated_at: new Date().toISOString(),
             })
-            .eq('sku', product.sku);
+            .eq('id', oldProduct.id);
 
           if (!updateError) {
+            // Record audit
+            await supabase.from('import_products_audit').insert({
+              import_id: importRecordId,
+              product_id: oldProduct.id,
+              sku: product.sku,
+              action: 'update',
+              old_data: { name: oldProduct.name, sku: oldProduct.sku, ean: oldProduct.ean, location: oldProduct.location, price: oldProduct.price },
+              new_data: { name: product.name, sku: product.sku, ean: product.ean, location: product.location, price: product.price },
+            });
+
             imported++;
             updateCount++;
           }
@@ -204,11 +272,21 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
         message: `Processando ${current} de ${total} produtos...`,
       });
 
-      // Small delay to show progress
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Update summary with actual counts
+    // Update import history
+    await supabase
+      .from('import_history')
+      .update({
+        total_products: imported,
+        new_products: newCount,
+        updated_products: updateCount,
+        errors: errors.length,
+        status: 'completed',
+      })
+      .eq('id', importRecordId);
+
     setSummary(prev => prev ? {
       ...prev,
       newProducts: newCount,
@@ -221,11 +299,41 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
       total,
       percentage: 100,
       status: 'completed',
-      message: 'Importação concluída!',
+      message: 'Importacao concluida!',
     });
 
     setStatus('complete');
-  }, [products, summary]);
+  }, [products, summary, columnMapping, isAdmin, existingProducts, errors.length]);
+
+  // Create import history record
+  const createImportHistory = async (): Promise<string | null> => {
+    if (!currentFile) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('import_history')
+        .insert({
+          file_name: currentFile.name,
+          file_size: currentFile.size,
+          file_content: fileContent,
+          total_products: 0,
+          new_products: 0,
+          updated_products: 0,
+          errors: 0,
+          imported_by: 'admin',
+          status: 'completed',
+          column_mapping: columnMapping,
+        })
+        .select('id')
+        .single();
+
+      if (error) throw error;
+      return data?.id || null;
+    } catch (err) {
+      console.error('Error creating import history:', err);
+      return null;
+    }
+  };
 
   // Reset state
   const handleReset = useCallback(() => {
@@ -241,11 +349,37 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
       status: 'idle',
       message: '',
     });
+    setCurrentFile(null);
+    setFileContent('');
+    setRawHeaders([]);
+    setRawRows([]);
+    setColumnMapping(null);
   }, []);
 
   const handleCancel = useCallback(() => {
     handleReset();
   }, [handleReset]);
+
+  // Admin check overlay
+  const AdminCheckOverlay = () => (
+    <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-6 text-center">
+      <div className="flex justify-center mb-4">
+        <div className="p-4 bg-amber-100 rounded-full">
+          <Lock size={40} className="text-amber-600" />
+        </div>
+      </div>
+      <h3 className="text-xl font-bold text-amber-800 mb-2">Acesso Restrito</h3>
+      <p className="text-amber-700 mb-4">
+        Somente administradores podem importar produtos.
+      </p>
+      <button
+        onClick={onRequestAdmin}
+        className="px-6 py-3 bg-amber-600 text-white rounded-lg font-bold hover:bg-amber-700 transition"
+      >
+        Fazer Login como Admin
+      </button>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-zinc-50 p-6">
@@ -272,22 +406,19 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
 
       {/* Stepper */}
       <div className="flex items-center justify-center mb-8">
-        {['upload', 'preview', 'importing', 'complete'].filter(s =>
-          s === 'upload' || s === 'preview' || s === 'importing' || s === 'complete'
-        ).map((step, idx) => {
-          const stepLabels = {
-            upload: 'Enviar Planilha',
-            preview: 'Revisar Dados',
-            importing: 'Importando',
-            complete: 'Concluído',
+        {['upload', 'mapping', 'preview', 'importing', 'complete'].map((step, idx) => {
+          const stepLabels: Record<string, string> = {
+            upload: 'Enviar',
+            mapping: 'Mapear',
+            preview: 'Revisar',
+            importing: 'Importar',
+            complete: 'Concluido',
           };
 
-          const isComplete =
-            (status === 'preview' && idx < 1) ||
-            (status === 'importing' && idx < 2) ||
-            (status === 'complete' && idx < 4) ||
-            false;
+          const statusOrder = ['upload', 'mapping', 'preview', 'importing', 'complete'];
+          const currentIdx = statusOrder.indexOf(status);
 
+          const isComplete = currentIdx > idx;
           const isCurrent = status === step;
 
           return (
@@ -305,12 +436,12 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
                       ? 'bg-zinc-900 text-white'
                       : 'bg-zinc-200 text-zinc-500'
                 }`}>
-                  {isComplete ? idx + 1 : idx + 1}
+                  {isComplete ? '✓' : idx + 1}
                 </div>
                 <p className={`text-xs mt-1 font-medium ${
                   isComplete || isCurrent ? 'text-zinc-800' : 'text-zinc-400'
                 }`}>
-                  {stepLabels[step as keyof typeof stepLabels]}
+                  {stepLabels[step]}
                 </p>
               </div>
             </React.Fragment>
@@ -320,34 +451,49 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({ onBack }) 
 
       {/* Content */}
       <div className="max-w-5xl mx-auto">
-        {status === 'upload' && (
-          <ProductUploadArea
-            onFileSelect={handleFileSelect}
-            isLoading={isReading}
-          />
-        )}
+        {!isAdmin ? (
+          <AdminCheckOverlay />
+        ) : (
+          <>
+            {status === 'upload' && (
+              <ProductUploadArea
+                onFileSelect={handleFileSelect}
+                isLoading={isReading}
+              />
+            )}
 
-        {status === 'preview' && summary && (
-          <ProductImportPreview
-            products={products}
-            summary={summary}
-            onConfirm={handleConfirmImport}
-            onCancel={handleCancel}
-            isImporting={false}
-            errors={errors}
-          />
-        )}
+            {status === 'mapping' && rawHeaders.length > 0 && (
+              <ColumnMappingWizard
+                headers={rawHeaders}
+                sampleRows={rawRows}
+                onConfirm={handleMappingConfirm}
+                onCancel={handleCancel}
+              />
+            )}
 
-        {status === 'importing' && (
-          <ProductImportProgress progress={progress} />
-        )}
+            {status === 'preview' && summary && (
+              <ProductImportPreview
+                products={products}
+                summary={summary}
+                onConfirm={handleConfirmImport}
+                onCancel={handleCancel}
+                isImporting={false}
+                errors={errors}
+              />
+            )}
 
-        {status === 'complete' && summary && (
-          <ProductImportSummary
-            summary={summary}
-            onViewProducts={onBack}
-            onNewImport={handleReset}
-          />
+            {status === 'importing' && (
+              <ProductImportProgress progress={progress} />
+            )}
+
+            {status === 'complete' && summary && (
+              <ProductImportSummary
+                summary={summary}
+                onViewProducts={onBack}
+                onNewImport={handleReset}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
