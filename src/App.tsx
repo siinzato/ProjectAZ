@@ -37,9 +37,11 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Map,
   type LucideIcon
 } from 'lucide-react';
 import { supabase, type BrandData, type TopVenda, type CustomKPI, type InventorySnapshot, type InventoryBrandHistory } from './lib/supabase';
+import { HeatmapEstoque } from './components/HeatmapEstoque';
 
 interface StatCardProps {
   title: string;
@@ -876,6 +878,12 @@ export default function App() {
 
           <nav className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
             <button
+              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'heatmap' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+              onClick={() => setActiveTab('heatmap')}
+            >
+              <span className="flex items-center gap-2"><Map size={16}/> Heatmap Estoque</span>
+            </button>
+            <button
               className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'admin' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
               onClick={() => setActiveTab('admin')}
             >
@@ -906,6 +914,20 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto p-4 md:p-6">
+
+        {/* ABA HEATMAP */}
+        {activeTab === 'heatmap' && (
+          <HeatmapEstoque
+            brandsData={brandsData}
+            onRequestAdminAccess={() => {
+              if (!isLoggedIn) {
+                setActiveTab('admin');
+              }
+            }}
+            isAdmin={isLoggedIn}
+            onLogout={() => setIsLoggedIn(false)}
+          />
+        )}
 
         {/* ABA DASHBOARD */}
         {activeTab === 'dashboard' && (
