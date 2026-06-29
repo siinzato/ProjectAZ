@@ -38,10 +38,13 @@ import {
   ChevronUp,
   RefreshCw,
   Map,
+  FileSpreadsheet,
+  ChevronRight,
   type LucideIcon
 } from 'lucide-react';
 import { supabase, type BrandData, type TopVenda, type CustomKPI, type InventorySnapshot, type InventoryBrandHistory } from './lib/supabase';
 import { HeatmapEstoque } from './components/HeatmapEstoque';
+import { ProductImportPage } from './components/ProductImportPage';
 
 interface StatCardProps {
   title: string;
@@ -877,12 +880,43 @@ export default function App() {
           </div>
 
           <nav className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'heatmap' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
-              onClick={() => setActiveTab('heatmap')}
-            >
-              <span className="flex items-center gap-2"><Map size={16}/> Heatmap Estoque</span>
-            </button>
+            {/* Heatmap Button with Submenu */}
+            <div className="relative group">
+              <button
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 ${
+                  activeTab === 'heatmap' || activeTab === 'import' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+              >
+                <Map size={16}/>
+                <span className="hidden sm:inline">Heatmap Estoque</span>
+                <span className="sm:hidden">Heatmap</span>
+                <ChevronDown size={14} className="ml-1" />
+              </button>
+
+              {/* Submenu */}
+              <div className="absolute left-0 top-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all min-w-[180px] z-20">
+                <button
+                  onClick={() => setActiveTab('heatmap')}
+                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-t-lg transition ${
+                    activeTab === 'heatmap' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                >
+                  <Map size={16} />
+                  Ver Heatmap
+                </button>
+                <div className="h-px bg-zinc-700" />
+                <button
+                  onClick={() => setActiveTab('import')}
+                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-b-lg transition ${
+                    activeTab === 'import' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                >
+                  <FileSpreadsheet size={16} />
+                  Importar Produtos
+                </button>
+              </div>
+            </div>
+
             <button
               className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'admin' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
               onClick={() => setActiveTab('admin')}
@@ -927,6 +961,11 @@ export default function App() {
             isAdmin={isLoggedIn}
             onLogout={() => setIsLoggedIn(false)}
           />
+        )}
+
+        {/* ABA IMPORTAR PRODUTOS */}
+        {activeTab === 'import' && (
+          <ProductImportPage onBack={() => setActiveTab('dashboard')} />
         )}
 
         {/* ABA DASHBOARD */}
