@@ -2228,10 +2228,10 @@ function AppContent() {
   );
 }
 
-// ── Link Company screen — shown when authenticated user has no company ────────
+// ── Link Company screen ───────────────────────────────────────────────────────
 
 function LinkCompanyScreen() {
-  const auth = useAuth();
+  const { linkToAZ, signOut, user } = useAuth();
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState('');
 
@@ -2239,8 +2239,7 @@ function LinkCompanyScreen() {
     setLinking(true);
     setError('');
     try {
-      // @ts-ignore
-      await auth.linkToAZ?.();
+      await linkToAZ();
     } catch {
       setError('Erro ao vincular empresa. Tente novamente.');
       setLinking(false);
@@ -2254,6 +2253,8 @@ function LinkCompanyScreen() {
           <BarChart3 size={28} className="text-emerald-400" />
         </div>
         <h2 className="text-xl font-black text-white mb-2">Vincular Empresa</h2>
+        <p className="text-zinc-500 text-sm mb-1">Logado como</p>
+        <p className="text-white text-sm font-semibold mb-6">{user?.email}</p>
         <p className="text-zinc-400 text-sm mb-6">
           Sua conta está ativa mas ainda não está vinculada a uma empresa.
         </p>
@@ -2265,9 +2266,66 @@ function LinkCompanyScreen() {
         >
           {linking ? <Loader2 size={16} className="animate-spin" /> : 'Vincular à empresa AZ'}
         </button>
-        <button onClick={auth.signOut} className="text-xs text-zinc-500 hover:text-zinc-300 transition">
+        <button onClick={signOut} className="text-xs text-zinc-500 hover:text-zinc-300 transition">
           Sair
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Auth error screen ─────────────────────────────────────────────────────────
+
+function AuthErrorScreen() {
+  const { authError, retryAuth, signOut } = useAuth();
+
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-zinc-900 border border-red-500/20 rounded-2xl p-8 text-center shadow-2xl">
+        <div className="w-14 h-14 bg-red-500/15 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <AlertTriangle size={28} className="text-red-400" />
+        </div>
+        <h2 className="text-xl font-black text-white mb-2">Erro ao carregar</h2>
+        <p className="text-zinc-400 text-sm mb-6">{authError ?? 'Ocorreu um erro inesperado.'}</p>
+        <button
+          onClick={retryAuth}
+          className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-bold text-sm transition mb-3"
+        >
+          Tentar novamente
+        </button>
+        <button
+          onClick={signOut}
+          className="w-full py-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl font-bold text-sm transition mb-3"
+        >
+          Sair da conta
+        </button>
+        <button
+          onClick={() => window.location.href = '/'}
+          className="text-xs text-zinc-500 hover:text-zinc-300 transition"
+        >
+          Voltar para homepage
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Profile loading overlay (non-blocking — only for authenticated users) ─────
+
+function ProfileLoadingOverlay() {
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="text-center">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 bg-emerald-500 rounded-xl flex items-center justify-center">
+            <BarChart3 size={20} className="text-white" />
+          </div>
+          <span className="text-xl font-bold text-white tracking-wide">
+            Inventory<span className="text-emerald-400 font-light">Blind</span>
+          </span>
+        </div>
+        <Loader2 className="mx-auto animate-spin text-emerald-500" size={32} />
+        <p className="text-zinc-500 text-sm mt-3">Carregando seu perfil...</p>
       </div>
     </div>
   );
@@ -2276,38 +2334,27 @@ function LinkCompanyScreen() {
 // ── App shell ─────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { view, loading } = useAuth();
+  const { view, authLoading, profileLoading } = useAuth();
 
-  if (loading || view === 'loading') {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <div className="text-center">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="bg-zinc-800 p-2 rounded-lg">
-              <BarChart3 className="text-emerald-400" size={24} />
-            </div>
-            <span className="text-xl font-bold text-white tracking-wide">
-              Inventory<span className="text-emerald-400 font-light">Blind</span>
-            </span>
-          </div>
-          <Loader2 className="mx-auto animate-spin text-zinc-400" size={36} />
-          <p className="text-zinc-600 text-sm mt-3">Carregando...</p>
-        </div>
-      </div>
-    );
-  }
+  // Auth error
+  if (view === 'auth-error') return <AuthErrorScreen />;
 
-  // Auth screens (only for non-authenticated users)
+  // Public routes — never block on auth
   if (view === 'landing') return <LandingPage />;
   if (view === 'login' || view === 'signup' || view === 'forgot' || view === 'confirm-email') return <AuthPage />;
 
+  // Auth still initializing (session check in progress)
+  if (authLoading) return <ProfileLoadingOverlay />;
+
   // Authenticated-only screens
-  if (view === 'link-company') return <LinkCompanyScreen />;
-  if (view === 'complete-profile') return <LinkCompanyScreen />; // same UI for now
+  if (view === 'link-company' || view === 'complete-profile') return <LinkCompanyScreen />;
+
+  // Profile loading after login
+  if (profileLoading && view !== 'app') return <ProfileLoadingOverlay />;
 
   // Main app
   if (view === 'app') return <AppContent />;
 
-  // Fallback — should never reach here for authenticated users
+  // Absolute fallback
   return <LandingPage />;
 }
