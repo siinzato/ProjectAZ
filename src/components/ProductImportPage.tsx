@@ -169,20 +169,32 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({
       total,
       percentage: 0,
       status: 'importing',
-      message: 'Preparando para importar...',
+      message: 'Criando registro de importacao...',
     });
 
     let imported = 0;
     let newCount = 0;
     let updateCount = 0;
+    let importRecordId: string | null = null;
 
     // Create import history record first
-    const importRecordId = await createImportHistory();
+    try {
+      importRecordId = await createImportHistory();
 
-    if (!importRecordId) {
-      alert('Erro ao criar registro de importacao');
-      setStatus('preview');
-      return;
+      if (!importRecordId) {
+        // Fallback: continue without history record
+        console.warn('[handleConfirmImport] Sem registro de historico, continuando sem auditoria');
+      }
+    } catch (err: any) {
+      console.error('[handleConfirmImport] Erro ao criar historico:', err);
+      // Fallback: ask user if they want to continue
+      const continueWithoutHistory = confirm(
+        `Nao foi possivel criar o registro de importacao no historico.\n\nErro: ${err?.message || 'Desconhecido'}\n\nDeseja continuar mesmo assim? (Os produtos serao importados, mas sem historico)`
+      );
+      if (!continueWithoutHistory) {
+        setStatus('preview');
+        return;
+      }
     }
 
     const batchSize = 50;
@@ -209,19 +221,29 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({
           .insert(insertData)
           .select('id, sku');
 
+        if (insertError) {
+          console.error('[handleConfirmImport] Erro ao inserir produtos:', insertError);
+        }
+
         if (!insertError && insertedProducts) {
-          // Record audit
-          for (const inserted of insertedProducts) {
-            const product = newProducts.find(p => p.sku === inserted.sku);
-            if (product) {
-              await supabase.from('import_products_audit').insert({
-                import_id: importRecordId,
-                product_id: inserted.id,
-                sku: product.sku,
-                action: 'insert',
-                old_data: null,
-                new_data: { name: product.name, sku: product.sku, ean: product.ean, location: product.location, price: product.price },
-              });
+          // Record audit only if we have import record
+          if (importRecordId) {
+            for (const inserted of insertedProducts) {
+              const product = newProducts.find(p => p.sku === inserted.sku);
+              if (product) {
+                try {
+                  await supabase.from('import_products_audit').insert({
+                    import_id: importRecordId,
+                    product_id: inserted.id,
+                    sku: product.sku,
+                    action: 'insert',
+                    old_data: null,
+                    new_data: { name: product.name, sku: product.sku, ean: product.ean, location: product.location, price: product.price },
+                  });
+                } catch (auditErr) {
+                  console.warn('[handleConfirmImport] Erro ao registrar auditoria:', auditErr);
+                }
+              }
             }
           }
           imported += newProducts.length;
@@ -245,17 +267,26 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({
             })
             .eq('id', oldProduct.id);
 
-          if (!updateError) {
-            // Record audit
-            await supabase.from('import_products_audit').insert({
-              import_id: importRecordId,
-              product_id: oldProduct.id,
-              sku: product.sku,
-              action: 'update',
-              old_data: { name: oldProduct.name, sku: oldProduct.sku, ean: oldProduct.ean, location: oldProduct.location, price: oldProduct.price },
-              new_data: { name: product.name, sku: product.sku, ean: product.ean, location: product.location, price: product.price },
-            });
+          if (updateError) {
+            console.error('[handleConfirmImport] Erro ao atualizar produto:', updateError);
+          }
 
+          if (!updateError) {
+            // Record audit only if we have import record
+            if (importRecordId) {
+              try {
+                await supabase.from('import_products_audit').insert({
+                  import_id: importRecordId,
+                  product_id: oldProduct.id,
+                  sku: product.sku,
+                  action: 'update',
+                  old_data: { name: oldProduct.name, sku: oldProduct.sku, ean: oldProduct.ean, location: oldProduct.location, price: oldProduct.price },
+                  new_data: { name: product.name, sku: product.sku, ean: product.ean, location: product.location, price: product.price },
+                });
+              } catch (auditErr) {
+                console.warn('[handleConfirmImport] Erro ao registrar auditoria:', auditErr);
+              }
+            }
             imported++;
             updateCount++;
           }
@@ -275,17 +306,23 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
-    // Update import history
-    await supabase
-      .from('import_history')
-      .update({
-        total_products: imported,
-        new_products: newCount,
-        updated_products: updateCount,
-        errors: errors.length,
-        status: 'completed',
-      })
-      .eq('id', importRecordId);
+    // Update import history only if we have a record
+    if (importRecordId) {
+      try {
+        await supabase
+          .from('import_history')
+          .update({
+            total_products: imported,
+            new_products: newCount,
+            updated_products: updateCount,
+            errors: errors.length,
+            status: 'completed',
+          })
+          .eq('id', importRecordId);
+      } catch (updateErr) {
+        console.warn('[handleConfirmImport] Erro ao atualizar historico:', updateErr);
+      }
+    }
 
     setSummary(prev => prev ? {
       ...prev,
@@ -307,30 +344,75 @@ export const ProductImportPage: React.FC<ProductImportPageProps> = ({
 
   // Create import history record
   const createImportHistory = async (): Promise<string | null> => {
-    if (!currentFile) return null;
+    if (!currentFile) {
+      console.error('[createImportHistory] Nenhum arquivo selecionado');
+      return null;
+    }
+
+    console.log('[createImportHistory] Criando registro de importacao...');
+    console.log('[createImportHistory] Arquivo:', currentFile.name);
+    console.log('[createImportHistory] Tamanho:', currentFile.size);
+    console.log('[createImportHistory] Mapeamento:', columnMapping);
+
+    // Prepare insert data - avoid large file_content
+    const insertData: Record<string, any> = {
+      file_name: currentFile.name,
+      file_size: currentFile.size,
+      total_products: 0,
+      new_products: 0,
+      updated_products: 0,
+      errors: 0,
+      imported_by: 'admin',
+      status: 'processing',
+    };
+
+    // Only add file_content if it's small (less than 500KB)
+    if (fileContent.length < 500000) {
+      insertData.file_content = fileContent;
+    } else {
+      console.log('[createImportHistory] Arquivo muito grande, nao sera salvo no historico');
+    }
+
+    // Only add column_mapping if it exists and is valid
+    if (columnMapping) {
+      insertData.column_mapping = columnMapping;
+    }
+
+    console.log('[createImportHistory] Dados do insert (resumidos):', {
+      file_name: insertData.file_name,
+      file_size: insertData.file_size,
+      status: insertData.status,
+      has_file_content: !!insertData.file_content,
+      has_column_mapping: !!insertData.column_mapping,
+    });
 
     try {
       const { data, error } = await supabase
         .from('import_history')
-        .insert({
-          file_name: currentFile.name,
-          file_size: currentFile.size,
-          file_content: fileContent,
-          total_products: 0,
-          new_products: 0,
-          updated_products: 0,
-          errors: 0,
-          imported_by: 'admin',
-          status: 'completed',
-          column_mapping: columnMapping,
-        })
+        .insert(insertData)
         .select('id')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[createImportHistory] Erro do Supabase:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        throw error;
+      }
+
+      console.log('[createImportHistory] Registro criado com sucesso:', data?.id);
       return data?.id || null;
-    } catch (err) {
-      console.error('Error creating import history:', err);
+    } catch (err: any) {
+      console.error('[createImportHistory] Erro completo:', err);
+      // Show user-friendly error
+      const errorMsg = err?.message || 'Erro desconhecido';
+      const errorCode = err?.code || '';
+      const errorHint = err?.hint || '';
+
+      alert(`Erro ao criar registro de importacao: ${errorMsg}\n\nCodigo: ${errorCode}\nDica: ${errorHint}\n\nVerifique o console para mais detalhes.`);
       return null;
     }
   };
