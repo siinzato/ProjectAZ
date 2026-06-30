@@ -43,6 +43,8 @@ import {
   Undo2,
   Tag,
   UserCog,
+  Building2,
+  Menu,
   type LucideIcon
 } from 'lucide-react';
 import { supabase, type BrandData, type TopVenda, type CustomKPI, type InventorySnapshot, type InventoryBrandHistory } from './lib/supabase';
@@ -60,7 +62,7 @@ import AuthPage from './components/AuthPage';
 import UserManagementPage from './components/UserManagementPage';
 import SecurityPage from './components/SecurityPage';
 import { useAuth, canManageUsers } from './lib/auth';
-import { hasPermission } from './lib/permissionService';
+import { hasPermission, getRoleLabel } from './lib/permissionService';
 
 interface StatCardProps {
   title: string;
@@ -124,6 +126,25 @@ interface GlobalData {
   piores: { nome: string; valor: string }[];
 }
 
+// ── Mobile nav helper ─────────────────────────────────────────────────────────
+
+function MobileNavItem({ label, onClick, active, highlight }: { label: string; onClick: () => void; active?: boolean; highlight?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+        highlight
+          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+          : active
+          ? 'bg-zinc-800 text-white'
+          : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function AppContent() {
   const { profile, company, companyId, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -140,6 +161,7 @@ function AppContent() {
   const [showAddKPIModal, setShowAddKPIModal] = useState(false);
 
   const isLoggedIn = canManageUsers(profile?.role);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [adminUser] = useState('');
   const [adminPass] = useState('');
   const [loginError] = useState(false);
@@ -882,188 +904,181 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-zinc-100 font-sans text-zinc-900 flex flex-col">
 
-      {/* HEADER - Fixed with high z-index */}
-      <header className="bg-zinc-950 text-white p-4 shadow-lg fixed top-0 left-0 right-0 z-[1000] border-b border-zinc-800">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="bg-zinc-800 p-2 rounded-lg">
-              <Package className="text-zinc-300" size={24} />
+      {/* ── TOP NAVIGATION ────────────────────────────────────────────────── */}
+      <header className="fixed top-0 left-0 right-0 z-[1000] bg-zinc-950 border-b border-zinc-800/70">
+
+        {/* Main bar */}
+        <div className="h-14 max-w-screen-2xl mx-auto px-4 flex items-center">
+
+          {/* Brand + Company */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-7 h-7 bg-emerald-500/15 rounded-lg flex items-center justify-center">
+              <BarChart3 size={15} className="text-emerald-400" />
             </div>
-            <h1 className="text-xl font-bold tracking-wide">
-              Inventory<span className="text-zinc-400 font-light">Blind</span>
-            </h1>
-            {company && (
-              <span className="hidden sm:inline text-xs font-medium text-zinc-500 bg-zinc-800 px-2 py-1 rounded-md border border-zinc-700">
-                {company.name}
-              </span>
-            )}
+            <span className="text-sm font-bold text-white tracking-tight whitespace-nowrap select-none">
+              Inventory<span className="text-zinc-500 font-normal">Blind</span>
+            </span>
           </div>
 
-          <nav className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
-            {/* Heatmap Button with SafeDropdown */}
-            <SafeDropdown
-              active={['heatmap', 'import', 'products', 'import-history'].includes(activeTab)}
-              trigger={
-                <button
-                  className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 ${
-                    ['heatmap', 'import', 'products', 'import-history'].includes(activeTab)
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                  }`}
-                >
-                  <Map size={16}/>
-                  <span className="hidden sm:inline">Heatmap Estoque</span>
-                  <span className="sm:hidden">Heatmap</span>
-                  <ChevronDown size={14} className="ml-1" />
-                </button>
-              }
-              items={[
-                {
-                  id: 'heatmap',
-                  label: 'Ver Heatmap',
-                  icon: <Map size={16} />,
-                  onClick: () => setActiveTab('heatmap'),
-                  active: activeTab === 'heatmap',
-                },
-                {
-                  id: 'products',
-                  label: 'Produtos Importados',
-                  icon: <Package size={16} />,
-                  onClick: () => setActiveTab('products'),
-                  active: activeTab === 'products',
-                },
-                {
-                  id: 'import',
-                  label: 'Importar Produtos',
-                  icon: <FileSpreadsheet size={16} />,
-                  onClick: () => setActiveTab('import'),
-                  active: activeTab === 'import',
-                  divider: true,
-                },
-                {
-                  id: 'import-history',
-                  label: 'Historico de Importacoes',
-                  icon: <History size={16} />,
-                  onClick: () => setActiveTab('import-history'),
-                  active: activeTab === 'import-history',
-                },
-              ]}
-            />
+          {company && (
+            <div className="ml-2.5 flex-shrink-0">
+              <button className="flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/40 text-[11px] font-semibold text-zinc-300 hover:text-white transition-colors">
+                {company.name}
+                <ChevronDown size={10} className="text-zinc-500 mt-px" />
+              </button>
+            </div>
+          )}
 
-            {/* Ferramentas menu */}
-            <SafeDropdown
-              active={['label-generator', 'full-manager'].includes(activeTab)}
-              trigger={
-                <button
-                  className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 flex-shrink-0 ${
-                    ['label-generator', 'full-manager'].includes(activeTab)
-                      ? 'bg-teal-600 text-white'
-                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                  }`}
-                >
-                  <Tag size={16} />
-                  <span className="hidden sm:inline">Ferramentas</span>
-                  <ChevronDown size={14} className="ml-1" />
-                </button>
-              }
-              items={[
-                {
-                  id: 'label-generator',
-                  label: 'Gerador de Etiquetas',
-                  icon: <Tag size={16} />,
-                  onClick: () => setActiveTab('label-generator'),
-                  active: activeTab === 'label-generator',
-                },
-                {
-                  id: 'full-manager',
-                  label: 'Full Manager',
-                  icon: <Package size={16} />,
-                  onClick: () => setActiveTab('full-manager'),
-                  active: activeTab === 'full-manager',
-                },
-              ]}
-            />
+          <div className="w-px h-5 bg-zinc-800 mx-3.5 flex-shrink-0 hidden md:block" />
+
+          {/* Desktop nav */}
+          <nav className="hidden md:flex items-center gap-0.5 flex-1 min-w-0">
 
             <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                activeTab === 'admin'
-                  ? 'bg-amber-600 text-white'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-              onClick={() => setActiveTab('admin')}
-            >
-              <span className="flex items-center gap-2"><Lock size={16}/> Acesso Admin</span>
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                activeTab === 'kpis'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-              onClick={() => setActiveTab('kpis')}
-            >
-              <span className="flex items-center gap-2"><Target size={16}/> KPIs</span>
-            </button>
-            <div className="w-px bg-zinc-700 mx-1 hidden md:block"></div>
-            <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                activeTab === 'dashboard'
-                  ? 'bg-zinc-200 text-zinc-900'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
               onClick={() => setActiveTab('dashboard')}
+              className={`px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'dashboard'
+                  ? 'text-white bg-zinc-800'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+              }`}
             >
               Dashboard
             </button>
+
+            <SafeDropdown
+              active={['heatmap','import','products','import-history','label-generator','full-manager'].includes(activeTab)}
+              trigger={
+                <button className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  ['heatmap','import','products','import-history','label-generator','full-manager'].includes(activeTab)
+                    ? 'text-white bg-zinc-800'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                }`}>
+                  Operações <ChevronDown size={12} className="text-zinc-600" />
+                </button>
+              }
+              items={[
+                { id: 'heatmap',         label: 'Ver Heatmap',              icon: <Map size={14}/>,             onClick: () => setActiveTab('heatmap'),         active: activeTab === 'heatmap' },
+                { id: 'products',        label: 'Produtos Importados',      icon: <Package size={14}/>,         onClick: () => setActiveTab('products'),         active: activeTab === 'products' },
+                { id: 'import',          label: 'Importar Produtos',        icon: <FileSpreadsheet size={14}/>, onClick: () => setActiveTab('import'),           active: activeTab === 'import' },
+                { id: 'import-history',  label: 'Histórico de Importações', icon: <History size={14}/>,         onClick: () => setActiveTab('import-history'),   active: activeTab === 'import-history', divider: true },
+                { id: 'label-generator', label: 'Gerador de Etiquetas',     icon: <Tag size={14}/>,             onClick: () => setActiveTab('label-generator'), active: activeTab === 'label-generator', divider: true },
+                { id: 'full-manager',    label: 'Full Manager',             icon: <Zap size={14}/>,             onClick: () => setActiveTab('full-manager'),     active: activeTab === 'full-manager' },
+              ]}
+            />
+
+            <SafeDropdown
+              active={['kpis','rankings'].includes(activeTab)}
+              trigger={
+                <button className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  ['kpis','rankings'].includes(activeTab)
+                    ? 'text-white bg-zinc-800'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                }`}>
+                  Análises <ChevronDown size={12} className="text-zinc-600" />
+                </button>
+              }
+              items={[
+                { id: 'kpis',     label: 'KPIs e Indicadores', icon: <Target size={14}/>, onClick: () => setActiveTab('kpis'),     active: activeTab === 'kpis' },
+                { id: 'rankings', label: 'Rankings',            icon: <Award size={14}/>,  onClick: () => setActiveTab('rankings'), active: activeTab === 'rankings' },
+              ]}
+            />
+
+            <SafeDropdown
+              active={['admin','users','security'].includes(activeTab)}
+              trigger={
+                <button className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  ['admin','users','security'].includes(activeTab)
+                    ? 'text-white bg-zinc-800'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                }`}>
+                  Administração <ChevronDown size={12} className="text-zinc-600" />
+                </button>
+              }
+              items={[
+                { id: 'admin', label: 'Acesso Administrativo', icon: <Lock size={14}/>, onClick: () => setActiveTab('admin'), active: activeTab === 'admin' },
+                ...(canManageUsers(profile?.role) ? [{ id: 'users', label: 'Usuários', icon: <UserCog size={14}/>, onClick: () => setActiveTab('users'), active: activeTab === 'users' }] : []),
+                ...(hasPermission(profile?.role, 'security.view') ? [{ id: 'security', label: 'Segurança', icon: <ShieldCheck size={14}/>, onClick: () => setActiveTab('security'), active: activeTab === 'security' }] : []),
+              ]}
+            />
+          </nav>
+
+          {/* Right side */}
+          <div className="ml-auto flex items-center gap-1.5 pl-3">
+
+            {/* + Nova Contagem CTA */}
             <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                activeTab === 'input'
-                  ? 'bg-zinc-200 text-zinc-900'
-                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-              }`}
-              onClick={() => setActiveTab('input')}
+              onClick={() => { setActiveTab('input'); setMobileOpen(false); }}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white text-sm font-semibold rounded-lg transition-colors flex-shrink-0"
             >
-              + Contar
+              <Plus size={14} />
+              <span className="hidden lg:inline">Nova Contagem</span>
+              <span className="lg:hidden">Contar</span>
             </button>
+
+            {/* User menu */}
+            <SafeDropdown
+              trigger={
+                <button className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-lg hover:bg-zinc-800 transition-colors">
+                  <div className="w-7 h-7 rounded-full bg-emerald-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 uppercase">
+                    {(profile?.email ?? '?').slice(0, 1)}
+                  </div>
+                  <div className="hidden xl:block text-left leading-tight">
+                    <p className="text-xs font-medium text-zinc-200">{profile?.email?.split('@')[0]}</p>
+                    <p className="text-[10px] text-zinc-500">{getRoleLabel(profile?.role ?? '')}</p>
+                  </div>
+                  <ChevronDown size={12} className="text-zinc-600 hidden xl:block" />
+                </button>
+              }
+              items={[
+                { id: 'company', label: `Empresa: ${company?.name ?? '—'}`, icon: <Building2 size={14} />, onClick: () => {} },
+                { id: 'signout', label: 'Sair',                             icon: <LogOut size={14} />,    onClick: signOut, divider: true },
+              ]}
+            />
+
+            {/* Hamburger */}
+            <button
+              onClick={() => setMobileOpen(o => !o)}
+              className="md:hidden p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
+            >
+              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile drawer */}
+        {mobileOpen && (
+          <div className="md:hidden border-t border-zinc-800 bg-zinc-950 px-3 py-3 space-y-0.5">
+            <MobileNavItem label="Dashboard" onClick={() => { setActiveTab('dashboard'); setMobileOpen(false); }} active={activeTab === 'dashboard'} />
+            <MobileNavItem label="+ Nova Contagem" onClick={() => { setActiveTab('input'); setMobileOpen(false); }} active={activeTab === 'input'} highlight />
+            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest px-3 pt-3 pb-1">Operações</p>
+            <MobileNavItem label="Ver Heatmap"              onClick={() => { setActiveTab('heatmap');         setMobileOpen(false); }} active={activeTab === 'heatmap'} />
+            <MobileNavItem label="Produtos Importados"      onClick={() => { setActiveTab('products');        setMobileOpen(false); }} active={activeTab === 'products'} />
+            <MobileNavItem label="Importar Produtos"        onClick={() => { setActiveTab('import');          setMobileOpen(false); }} active={activeTab === 'import'} />
+            <MobileNavItem label="Histórico de Importações" onClick={() => { setActiveTab('import-history');  setMobileOpen(false); }} active={activeTab === 'import-history'} />
+            <MobileNavItem label="Gerador de Etiquetas"     onClick={() => { setActiveTab('label-generator'); setMobileOpen(false); }} active={activeTab === 'label-generator'} />
+            <MobileNavItem label="Full Manager"             onClick={() => { setActiveTab('full-manager');    setMobileOpen(false); }} active={activeTab === 'full-manager'} />
+            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest px-3 pt-3 pb-1">Análises</p>
+            <MobileNavItem label="KPIs e Indicadores" onClick={() => { setActiveTab('kpis');     setMobileOpen(false); }} active={activeTab === 'kpis'} />
+            <MobileNavItem label="Rankings"           onClick={() => { setActiveTab('rankings'); setMobileOpen(false); }} active={activeTab === 'rankings'} />
+            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest px-3 pt-3 pb-1">Administração</p>
+            <MobileNavItem label="Acesso Administrativo" onClick={() => { setActiveTab('admin');    setMobileOpen(false); }} active={activeTab === 'admin'} />
             {canManageUsers(profile?.role) && (
-              <button
-                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                  activeTab === 'users'
-                    ? 'bg-blue-600 text-white'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-                onClick={() => setActiveTab('users')}
-              >
-                <span className="flex items-center gap-2"><UserCog size={16}/> Usuários</span>
-              </button>
+              <MobileNavItem label="Usuários" onClick={() => { setActiveTab('users'); setMobileOpen(false); }} active={activeTab === 'users'} />
             )}
             {hasPermission(profile?.role, 'security.view') && (
-              <button
-                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
-                  activeTab === 'security'
-                    ? 'bg-emerald-700 text-white'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-                onClick={() => setActiveTab('security')}
-              >
-                <span className="flex items-center gap-2"><ShieldCheck size={16}/> Segurança</span>
-              </button>
+              <MobileNavItem label="Segurança" onClick={() => { setActiveTab('security'); setMobileOpen(false); }} active={activeTab === 'security'} />
             )}
-            <div className="w-px bg-zinc-700 mx-1 hidden md:block"></div>
-            <button
-              onClick={signOut}
-              className="px-3 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center gap-2"
-              title="Sair"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Sair</span>
-            </button>
-          </nav>
-        </div>
+            <div className="border-t border-zinc-800 mt-3 pt-3">
+              <button onClick={signOut} className="flex items-center gap-2 w-full px-3 py-2.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-sm">
+                <LogOut size={15} /> Sair
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* MAIN CONTENT - with padding-top to account for fixed header */}
-      <main className="flex-1 mt-[76px] overflow-y-auto overflow-x-hidden">
+      {/* MAIN CONTENT */}
+      <main className="flex-1 mt-14 overflow-y-auto overflow-x-hidden">
 
         {activeTab !== 'rankings' && activeTab !== 'label-generator' && activeTab !== 'full-manager' && activeTab !== 'users' && (
           <>
@@ -1883,7 +1898,7 @@ function AppContent() {
 
       {/* ABA RANKINGS COMPLETOS - rendered as full page, outside overflow container */}
       {activeTab === 'rankings' && (
-        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+        <div className="fixed inset-0 top-14 z-[900] bg-zinc-50 overflow-y-auto">
           <RankingsPage
             onBack={() => setActiveTab('dashboard')}
             brandsData={globais.tabela}
@@ -1898,28 +1913,28 @@ function AppContent() {
 
       {/* FERRAMENTAS: GERADOR DE ETIQUETAS */}
       {activeTab === 'label-generator' && (
-        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+        <div className="fixed inset-0 top-14 z-[900] bg-zinc-50 overflow-y-auto">
           <LabelGeneratorPage onBack={() => setActiveTab('dashboard')} />
         </div>
       )}
 
       {/* FERRAMENTAS: FULL MANAGER */}
       {activeTab === 'full-manager' && (
-        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+        <div className="fixed inset-0 top-14 z-[900] bg-zinc-50 overflow-y-auto">
           <FullManagerPage onBack={() => setActiveTab('dashboard')} />
         </div>
       )}
 
       {/* GERENCIAMENTO DE USUÁRIOS */}
       {activeTab === 'users' && (
-        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+        <div className="fixed inset-0 top-14 z-[900] bg-zinc-50 overflow-y-auto">
           <UserManagementPage onBack={() => setActiveTab('dashboard')} />
         </div>
       )}
 
       {/* CENTRAL DE SEGURANÇA */}
       {activeTab === 'security' && (
-        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-950 overflow-y-auto">
+        <div className="fixed inset-0 top-14 z-[900] bg-zinc-950 overflow-y-auto">
           <SecurityPage onBack={() => setActiveTab('dashboard')} />
         </div>
       )}
