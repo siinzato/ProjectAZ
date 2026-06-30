@@ -1,11 +1,11 @@
 /**
- * Auth context — bulletproof implementation.
+ * Auth context — definitive implementation.
  *
- * Architecture rules:
- * 1. Never call supabase.from() inside onAuthStateChange — causes deadlock.
- *    DB queries run in a separate useEffect that watches `user`.
- * 2. `view` starts as 'landing' so the homepage is always immediate.
- * 3. Loading state has a 5s hard timeout to prevent infinite loading.
+ * Key rules:
+ * 1. Never call supabase.from() synchronously inside onAuthStateChange — deadlock.
+ *    Use setTimeout(0) to defer so the JWT is committed first.
+ * 2. `view` starts as 'landing' so the homepage is never blocked.
+ * 3. 8s hard timeout so loading never hangs forever.
  * 4. Authenticated users NEVER get routed to 'signup'.
  */
 
@@ -52,8 +52,8 @@ interface AuthContextValue {
   profile: Profile | null;
   company: Company | null;
   companyId: string;
-  authLoading: boolean;    // true while initial auth check runs
-  profileLoading: boolean; // true while profile/company loads
+  authLoading: boolean;
+  profileLoading: boolean;
   authError: string | null;
   view: AuthView;
   setView: (v: AuthView) => void;
@@ -66,228 +66,223 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const AZ_COMPANY_ID = '00000000-0000-0000-0000-000000000001';
-const LOAD_TIMEOUT_MS = 8000;
+const AUTH_TIMEOUT_MS = 8000;
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser]               = useState<User | null>(null);
-  const [session, setSession]         = useState<Session | null>(null);
-  const [profile, setProfile]         = useState<Profile | null>(null);
-  const [company, setCompany]         = useState<Company | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [authError, setAuthError]     = useState<string | null>(null);
-  // Start on landing so homepage is never blocked
-  const [view, setView]               = useState<AuthView>('landing');
+  const [user, setUser]                       = useState<User | null>(null);
+  const [session, setSession]                 = useState<Session | null>(null);
+  const [profile, setProfile]                 = useState<Profile | null>(null);
+  const [company, setCompany]                 = useState<Company | null>(null);
+  const [authLoading, setAuthLoading]         = useState(true);
+  const [profileLoading, setProfileLoading]   = useState(false);
+  const [authError, setAuthError]             = useState<string | null>(null);
+  const [view, setView]                       = useState<AuthView>('landing');
 
-  const mountedRef   = useRef(true);
-  const timeoutRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef    = useRef(true);
+  const timeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadingRef    = useRef(false); // prevents concurrent profile loads
 
   useEffect(() => {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
 
-  // ── Load profile + company ────────────────────────────────────────────────
-  const loadProfileAndCompany = useCallback(async (u: User): Promise<Profile | null> => {
-    if (!mountedRef.current) return null;
+  // ── Fetch profile + company ────────────────────────────────────────────────
+  const doLoadProfile = useCallback(async (u: User): Promise<Profile | null> => {
+    console.log('[Auth] Fetching profile for', u.email, u.id);
 
-    console.log('[Auth] Loading profile for', u.email, u.id);
-    setProfileLoading(true);
+    // Attempt 1
+    const { data: p1, error: e1 } = await supabase
+      .from('profiles')
+      .select('id, name, email, company_id, role, must_change_password')
+      .eq('id', u.id)
+      .maybeSingle();
 
-    // Hard timeout to prevent infinite loading
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), LOAD_TIMEOUT_MS)
-    );
+    if (e1) console.warn('[Auth] Profile attempt 1 error:', e1.message);
 
-    const fetchProfile = async () => {
-      // Attempt 1
-      const { data: p1, error: e1 } = await supabase
-        .from('profiles')
-        .select('id, name, email, company_id, role, must_change_password')
-        .eq('id', u.id)
-        .maybeSingle();
-
-      if (e1) console.warn('[Auth] Profile fetch error:', e1.message);
-      if (p1) return p1 as Profile;
-
-      // Attempt 2 — trigger may be slow
-      console.log('[Auth] Profile not found, retrying in 1s...');
-      await new Promise(r => setTimeout(r, 1000));
-      const { data: p2, error: e2 } = await supabase
-        .from('profiles')
-        .select('id, name, email, company_id, role, must_change_password')
-        .eq('id', u.id)
-        .maybeSingle();
-      if (e2) console.warn('[Auth] Profile retry error:', e2.message);
-      return (p2 as Profile | null) ?? null;
-    };
-
-    const prof = await Promise.race([fetchProfile(), timeoutPromise]);
-
-    if (!mountedRef.current) return null;
-
+    const prof = (p1 ?? null) as Profile | null;
     console.log('[Auth] Profile result:', prof);
 
-    if (prof === null) {
-      console.warn('[Auth] Profile load timed out or not found');
-      setProfileLoading(false);
-      return null;
+    if (!prof) {
+      console.warn('[Auth] Profile not found for', u.id);
     }
-
-    setProfile(prof);
-
-    // Load company
-    if (prof.company_id) {
-      const { data: comp, error: compErr } = await supabase
-        .from('companies')
-        .select('id, name, slug, plan, settings')
-        .eq('id', prof.company_id)
-        .maybeSingle();
-
-      if (compErr) console.warn('[Auth] Company fetch error:', compErr.message);
-      console.log('[Auth] Company result:', comp);
-      if (mountedRef.current) setCompany(comp as Company | null);
-    }
-
-    if (mountedRef.current) setProfileLoading(false);
     return prof;
   }, []);
 
-  const refreshProfile = useCallback(async () => {
-    if (!user) return;
-    await loadProfileAndCompany(user);
-  }, [user, loadProfileAndCompany]);
+  const doLoadCompany = useCallback(async (companyId: string): Promise<Company | null> => {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, name, slug, plan, settings')
+      .eq('id', companyId)
+      .maybeSingle();
 
-  // ── Resolve view after profile loads ──────────────────────────────────────
-  const resolveAppView = useCallback((u: User, prof: Profile | null) => {
+    if (error) console.warn('[Auth] Company error:', error.message);
+    console.log('[Auth] Company result:', data);
+    return (data ?? null) as Company | null;
+  }, []);
+
+  // ── Resolve which view to show ─────────────────────────────────────────────
+  const resolveView = useCallback((u: User, prof: Profile | null) => {
+    console.log('[Auth] Resolving view — user:', u.email, 'profile:', prof, 'email_confirmed:', u.email_confirmed_at);
+
     if (!u.email_confirmed_at) {
-      console.log('[Auth] Redirect → confirm-email');
+      console.log('[Auth] → confirm-email');
       setView('confirm-email');
       return;
     }
     if (!prof) {
-      console.log('[Auth] Redirect → complete-profile (no profile)');
+      console.log('[Auth] → complete-profile (profile is null)');
       setView('complete-profile');
       return;
     }
     if (!prof.company_id) {
-      console.log('[Auth] Redirect → link-company (no company_id)');
+      console.log('[Auth] → link-company (no company_id in profile)');
       setView('link-company');
       return;
     }
-    console.log('[Auth] Redirect → app. Role:', prof.role, 'Company:', prof.company_id);
+    console.log('[Auth] → app ✓  role:', prof.role, 'company_id:', prof.company_id);
     setView('app');
   }, []);
 
-  // ── onAuthStateChange — only sets user/session, NEVER calls DB ────────────
+  // ── Full load sequence after confirmed login ───────────────────────────────
+  const runAuthSequence = useCallback(async (u: User) => {
+    if (!mountedRef.current) return;
+    if (loadingRef.current) {
+      console.log('[Auth] Already loading — skip');
+      return;
+    }
+
+    loadingRef.current = true;
+    setProfileLoading(true);
+
+    try {
+      const prof = await doLoadProfile(u);
+      if (!mountedRef.current) return;
+
+      setProfile(prof);
+
+      if (prof?.company_id) {
+        const comp = await doLoadCompany(prof.company_id);
+        if (mountedRef.current) setCompany(comp);
+      }
+
+      if (mountedRef.current) {
+        resolveView(u, prof);
+      }
+    } catch (err) {
+      console.error('[Auth] runAuthSequence error:', err);
+      if (mountedRef.current) {
+        setAuthError('Erro ao carregar dados. Tente novamente.');
+        setView('auth-error');
+      }
+    } finally {
+      loadingRef.current = false;
+      if (mountedRef.current) {
+        setProfileLoading(false);
+        setAuthLoading(false);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      }
+    }
+  }, [doLoadProfile, doLoadCompany, resolveView]);
+
+  // ── onAuthStateChange — sets state, defers DB work via setTimeout(0) ──────
   useEffect(() => {
+    // Hard timeout so authLoading never stays true forever
+    timeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      if (authLoading) {
+        console.warn('[Auth] Timeout reached');
+        setAuthLoading(false);
+        setAuthError('O carregamento demorou demais. Verifique sua conexão.');
+        setView('auth-error');
+      }
+    }, AUTH_TIMEOUT_MS);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (!mountedRef.current) return;
-      console.log('[Auth] onAuthStateChange:', event, s?.user?.email ?? 'no user');
+
+      console.log('[Auth] onAuthStateChange →', event, s?.user?.email ?? 'no user');
 
       setSession(s);
       setUser(s?.user ?? null);
 
       if (!s?.user) {
+        // Signed out or no session
         setProfile(null);
         setCompany(null);
-        setAuthLoading(false);
+        loadingRef.current = false;
         setProfileLoading(false);
-      }
-      // When user exists, the separate useEffect below handles profile loading
-    });
+        setAuthLoading(false);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
 
-    // Global timeout: if authLoading is still true after LOAD_TIMEOUT_MS, show error
-    timeoutRef.current = setTimeout(() => {
-      if (!mountedRef.current) return;
-      setAuthLoading(prev => {
-        if (prev) {
-          console.warn('[Auth] Auth load timed out');
-          setAuthError('O carregamento demorou demais. Verifique sua conexão.');
-          setView('auth-error');
-        }
-        return false;
-      });
-    }, LOAD_TIMEOUT_MS);
+        // Go to landing unless already on an auth sub-page
+        setView(curr => {
+          const authPages: AuthView[] = ['login', 'signup', 'forgot', 'confirm-email'];
+          return authPages.includes(curr) ? curr : 'landing';
+        });
+        return;
+      }
+
+      // User exists — defer DB queries so JWT is committed first
+      const capturedUser = s.user;
+      setTimeout(() => {
+        if (!mountedRef.current) return;
+        runAuthSequence(capturedUser);
+      }, 0);
+    });
 
     return () => {
       subscription.unsubscribe();
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, []);
-
-  // ── Watch user — load profile when user changes ───────────────────────────
-  useEffect(() => {
-    if (authLoading === true && user === null) {
-      // onAuthStateChange hasn't fired yet — wait
-      return;
-    }
-
-    if (!user) {
-      // Not logged in — clear state, go to landing (unless on an auth sub-page)
-      setAuthLoading(false);
-      setProfileLoading(false);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-      setView(current => {
-        const authSubPages: AuthView[] = ['login', 'signup', 'forgot', 'confirm-email'];
-        if (authSubPages.includes(current)) return current; // stay on auth page
-        return 'landing'; // everything else → landing
-      });
-
-      console.log('[Auth] No user → view: landing/auth-page');
-      return;
-    }
-
-    // User is logged in — load profile
-    loadProfileAndCompany(user).then(prof => {
-      if (!mountedRef.current) return;
-      setAuthLoading(false);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      resolveAppView(user, prof);
-    });
-  }, [user, authLoading, loadProfileAndCompany, resolveAppView]);
+  }, [runAuthSequence]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── signOut ────────────────────────────────────────────────────────────────
   const signOut = useCallback(async () => {
+    loadingRef.current = false;
     await supabase.auth.signOut();
     if (!mountedRef.current) return;
     setProfile(null);
     setCompany(null);
     setAuthError(null);
+    setAuthLoading(false);
     setView('landing');
   }, []);
 
   // ── retryAuth ─────────────────────────────────────────────────────────────
   const retryAuth = useCallback(() => {
-    setAuthError(null);
-    setAuthLoading(true);
-    setView('landing');
     window.location.reload();
   }, []);
 
-  // ── linkToAZ — fix a user that has no company_id ──────────────────────────
+  // ── refreshProfile ────────────────────────────────────────────────────────
+  const refreshProfile = useCallback(async () => {
+    if (!user) return;
+    loadingRef.current = false;
+    await runAuthSequence(user);
+  }, [user, runAuthSequence]);
+
+  // ── linkToAZ ──────────────────────────────────────────────────────────────
   const linkToAZ = useCallback(async () => {
     if (!user) return;
     const role = user.email === 'victor@azbuy.com.br' ? 'owner' : 'viewer';
+
     const { error } = await supabase
       .from('profiles')
       .update({ company_id: AZ_COMPANY_ID, role })
       .eq('id', user.id);
 
     if (error) {
-      console.error('[Auth] linkToAZ error:', error.message);
-      return;
+      console.error('[Auth] linkToAZ update error:', error.message);
+      throw error;
     }
-    await refreshProfile().then(() => {
-      if (mountedRef.current) {
-        setView('app');
-      }
-    });
-  }, [user, refreshProfile]);
 
+    loadingRef.current = false;
+    await runAuthSequence(user);
+  }, [user, runAuthSequence]);
+
+  // ── Value ──────────────────────────────────────────────────────────────────
   const value: AuthContextValue = {
     user,
     session,
@@ -315,8 +310,6 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }
-
-// ── Role helpers ──────────────────────────────────────────────────────────────
 
 export function canManageUsers(role: string | undefined): boolean {
   return role === 'owner' || role === 'admin';
