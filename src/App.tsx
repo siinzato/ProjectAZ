@@ -170,7 +170,10 @@ function AppContent() {
 
   // Load data from Supabase
   useEffect(() => {
-    if (!companyId) return;
+    if (!companyId) {
+      setLoading(false);
+      return;
+    }
     async function loadData() {
       try {
         setLoading(true);

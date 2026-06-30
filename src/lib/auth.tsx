@@ -131,8 +131,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (loading) return;
     if (!user) {
-      // Keep whatever explicit view the user navigated to (login/signup/etc.)
-      // Only fall back to landing if we're not already on an auth view
       setView(v => (v === 'app' ? 'landing' : v));
       return;
     }
@@ -141,7 +139,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setView('confirm-email');
       return;
     }
-    if (profile && !profile.company_id) {
+    // Wait for profile to finish loading before routing to app
+    if (!profile) return;
+    if (!profile.company_id) {
       // Authenticated but no company — show signup flow to finish setup
       setView('signup');
       return;
