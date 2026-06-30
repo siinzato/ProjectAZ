@@ -49,6 +49,8 @@ import { ProductImportPage } from './components/ProductImportPage';
 import { ImportedProductsPage } from './components/ImportedProductsPage';
 import { ImportHistoryPage } from './components/ImportHistoryPage';
 import { SafeDropdown } from './components/SafeDropdown';
+import { RankingsPage } from './components/RankingsPage';
+import { DashboardRankingPreview } from './components/DashboardRankingPreview';
 
 interface StatCardProps {
   title: string;
@@ -123,7 +125,6 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [showRankingModal, setShowRankingModal] = useState(false);
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
   const [showAddKPIModal, setShowAddKPIModal] = useState(false);
 
@@ -982,6 +983,9 @@ export default function App() {
       {/* MAIN CONTENT - with padding-top to account for fixed header */}
       <main className="flex-1 mt-[76px] overflow-y-auto overflow-x-hidden">
 
+        {activeTab !== 'rankings' && (
+          <>
+
         {/* ABA HEATMAP */}
         {activeTab === 'heatmap' && (
           <HeatmapEstoque
@@ -1065,9 +1069,11 @@ export default function App() {
           />
         )}
 
+      {/* ABA RANKINGS COMPLETOS - rendered outside overflow container */}
+
         {/* ABA DASHBOARD */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-6">
+          <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
 
             {/* TOPO: INDICADORES PRINCIPAIS */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1246,42 +1252,20 @@ export default function App() {
                 </div>
 
                 <button
-                  onClick={() => setShowRankingModal(true)}
+                  onClick={() => setActiveTab('rankings')}
                   className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
                 >
                   <Trophy size={18} className="text-amber-400" />
                   Ver Rankings Completos
                 </button>
 
-                {/* Mini Rankings - Calculado Dinâmico - Top 10 */}
-                <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden">
-                  <div className="bg-zinc-50 p-3 border-b border-zinc-200">
-                    <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2">
-                      <Award size={18} className="text-amber-500" />
-                      Top 10 Acuracidades (Linhas)
-                    </h3>
-                  </div>
-                  <div className="p-0">
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {globais.melhores.map((m, i) => (
-                           <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
-                             <td className="p-2 text-zinc-600 truncate max-w-[180px]">
-               <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2 ${
-                 i === 0 ? 'bg-amber-400 text-white' :
-                 i === 1 ? 'bg-zinc-300 text-zinc-800' :
-                 i === 2 ? 'bg-amber-600 text-white' :
-                 'bg-zinc-200 text-zinc-600'
-               }`}>{i + 1}</span>
-               {m.nome}
-             </td>
-                             <td className="p-2 text-right font-semibold text-emerald-600">{m.valor}</td>
-                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                {/* Mini Rankings - Top 5 Preview */}
+                <DashboardRankingPreview
+                  melhores={globais.melhores}
+                  piores={globais.piores}
+                  inProgress={globais.tabela.filter(b => b.status === 'ANDAMENTO')}
+                  onViewAll={() => setActiveTab('rankings')}
+                />
               </div>
 
               {/* COLUNA DIREITA: Tabela de Controle */}
@@ -1567,7 +1551,7 @@ export default function App() {
 
         {/* ABA KPIs E INDICADORES */}
         {activeTab === 'kpis' && (
-          <div className="space-y-6">
+          <div className="max-w-7xl mx-auto p-4 md:p-6 space-y-6">
             {/* KPI Cards - Dinâmicos */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {customKPIs.map((kpi) => (
@@ -1834,7 +1818,25 @@ export default function App() {
           </div>
         )}
 
+          </> /* end activeTab !== 'rankings' */
+        )}
+
       </main>
+
+      {/* ABA RANKINGS COMPLETOS - rendered as full page, outside overflow container */}
+      {activeTab === 'rankings' && (
+        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+          <RankingsPage
+            onBack={() => setActiveTab('dashboard')}
+            brandsData={globais.tabela}
+            topVendas={topVendas}
+            opCapas={opCapas}
+            melhores={globais.melhores}
+            piores={globais.piores}
+            inProgress={globais.tabela.filter(b => b.status === 'ANDAMENTO')}
+          />
+        </div>
+      )}
 
       {/* MODAL ADICIONAR MARCA/LINHA */}
       {showAddBrandModal && (
@@ -1867,153 +1869,6 @@ export default function App() {
                 Cadastrar Linha
               </button>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL RANKINGS COMPLETOS */}
-      {showRankingModal && (
-        <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-zinc-200 bg-zinc-950 text-white">
-              <h3 className="font-bold text-lg flex items-center gap-2 tracking-wide">
-                <Trophy className="text-amber-400" /> Rankings e Destaques Completos
-              </h3>
-              <button onClick={() => setShowRankingModal(false)} className="text-zinc-400 hover:text-white p-1 rounded-md transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-
-            <div className="p-4 sm:p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-zinc-100">
-
-              {/* Top Melhores Acuracidades - Todas as linhas concluídas */}
-              <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden">
-                <div className="bg-emerald-50 p-3 sm:p-4 border-b border-emerald-100 text-emerald-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                  <Trophy size={16} className="text-emerald-500"/> Top Melhores Acuracidades ({globais.melhores.length} linhas)
-                </div>
-                <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
-                  <table className="w-full text-xs sm:text-sm">
-                    <tbody>
-                      {globais.melhores.map((item, i) => (
-                        <tr key={i} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
-                          <td className="p-2 sm:p-3 pl-4 font-medium text-zinc-700">
-                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold mr-2 ${
-                              i === 0 ? 'bg-amber-400 text-white' :
-                              i === 1 ? 'bg-zinc-300 text-zinc-800' :
-                              i === 2 ? 'bg-amber-600 text-white' :
-                              'bg-zinc-200 text-zinc-600'
-                            }`}>{i + 1}</span>
-                            {item.nome}
-                          </td>
-                          <td className="p-2 sm:p-3 pr-4 text-right font-bold text-emerald-600">{item.valor}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Top Piores Acuracidades - Todas as linhas concluídas */}
-              <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden">
-                <div className="bg-red-50 p-3 sm:p-4 border-b border-red-100 text-red-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                  <TrendingUp size={16} className="text-red-500 rotate-180"/> Piores Acuracidades ({globais.piores.length} linhas)
-                </div>
-                <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
-                  <table className="w-full text-xs sm:text-sm">
-                    <tbody>
-                      {globais.piores.map((item, i) => (
-                        <tr key={i} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
-                          <td className="p-2 sm:p-3 pl-4 font-medium text-zinc-700">{item.nome}</td>
-                          <td className="p-2 sm:p-3 pr-4 text-right font-bold text-red-600">{item.valor}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Top 10 Vendas da Semana */}
-              <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden md:col-span-2">
-                <div className="bg-zinc-900 p-3 sm:p-4 border-b border-zinc-800 text-white font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                  <Award size={16} className="text-amber-400"/> Top 10 Vendas da Semana (Editável em Acesso Administrativo)
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs sm:text-sm text-left whitespace-nowrap">
-                    <thead className="bg-zinc-50 text-[10px] sm:text-xs text-zinc-500 uppercase font-bold border-b border-zinc-200">
-                      <tr>
-                        <th className="p-3 sm:p-4">#</th>
-                        <th className="p-3 sm:p-4">Produto</th>
-                        <th className="p-3 sm:p-4">SKU</th>
-                        <th className="p-3 sm:p-4 text-right">Vendas</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {topVendas.map((item, i) => (
-                        <tr key={item.id} className="border-b border-zinc-100 hover:bg-zinc-50">
-                          <td className="p-3 sm:p-4 text-zinc-500 font-bold">{i + 1}</td>
-                          <td className="p-3 sm:p-4 font-medium text-zinc-800">{item.produto}</td>
-                          <td className="p-3 sm:p-4 text-zinc-500 font-mono">{item.sku}</td>
-                          <td className="p-3 sm:p-4 text-right font-bold text-zinc-900">{item.vendas}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Acuracidades por Operador (Capas) */}
-              <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden">
-                <div className="bg-blue-50 p-3 sm:p-4 border-b border-blue-100 text-blue-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                  <Users size={16} className="text-blue-500"/> Acuracidades por Operador (Capas)
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs sm:text-sm whitespace-nowrap">
-                    <thead className="bg-zinc-50 text-[10px] sm:text-xs text-zinc-500 uppercase font-bold">
-                      <tr>
-                        <th className="p-2 sm:p-3 pl-4 text-left border-b border-zinc-200">Marca</th>
-                        <th className="p-2 sm:p-3 text-center border-b border-zinc-200">Operador</th>
-                        <th className="p-2 sm:p-3 pr-4 text-right border-b border-zinc-200">Acuracidade</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {opCapas.map((item, i) => (
-                        <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
-                          <td className="p-2 sm:p-3 pl-4 font-bold text-zinc-800">{item.nome}</td>
-                          <td className="p-2 sm:p-3 text-center font-medium text-zinc-600">{item.resp}</td>
-                          <td className="p-2 sm:p-3 pr-4 text-right font-bold text-zinc-900">{item.valor}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Linhas em Andamento */}
-              <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden">
-                <div className="bg-amber-50 p-3 sm:p-4 border-b border-amber-100 text-amber-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
-                  <Clock size={16} className="text-amber-500"/> Linhas em Andamento
-                </div>
-                <div className="overflow-y-auto" style={{ maxHeight: '350px' }}>
-                  <table className="w-full text-xs sm:text-sm">
-                    <tbody>
-                      {globais.tabela.filter(b => b.status === 'ANDAMENTO').map((item) => (
-                        <tr key={item.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
-                          <td className="p-2 sm:p-3 pl-4 font-medium text-zinc-700">{item.brand}</td>
-                          <td className="p-2 sm:p-3 text-center text-zinc-500">{item.doneSku}/{item.totalSku}</td>
-                          <td className="p-2 sm:p-3 pr-4 text-right font-bold text-amber-600">{item.progress.toFixed(1)}%</td>
-                        </tr>
-                      ))}
-                      {globais.tabela.filter(b => b.status === 'ANDAMENTO').length === 0 && (
-                        <tr>
-                          <td colSpan={3} className="p-4 text-center text-zinc-400">Todas as linhas foram concluídas!</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
           </div>
         </div>
       )}
