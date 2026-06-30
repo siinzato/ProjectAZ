@@ -265,19 +265,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── linkToAZ ──────────────────────────────────────────────────────────────
   const linkToAZ = useCallback(async () => {
-    if (!user) return;
+    if (!user) throw new Error('No authenticated user');
+
     const role = user.email === 'victor@azbuy.com.br' ? 'owner' : 'viewer';
 
-    const { error } = await supabase
+    console.log('[LinkToAZ] Starting diagnosis...');
+    console.log('[LinkToAZ] user.id:', user.id);
+    console.log('[LinkToAZ] user.email:', user.email);
+    console.log('[LinkToAZ] target company_id:', AZ_COMPANY_ID);
+    console.log('[LinkToAZ] target role:', role);
+
+    // STEP 1: Verify company exists
+    const { data: company, error: companyErr } = await supabase
+      .from('companies')
+      .select('id, name')
+      .eq('id', AZ_COMPANY_ID)
+      .maybeSingle();
+
+    console.log('[LinkToAZ] STEP 1 — company lookup:', { company, error: companyErr });
+    if (companyErr) throw new Error(`SELECT companies failed: ${companyErr.message} (code: ${companyErr.code}) hint: ${companyErr.hint}`);
+    if (!company) throw new Error(`Company AZ (${AZ_COMPANY_ID}) not found in companies table`);
+
+    // STEP 2: Check current profile state
+    const { data: existingProfile, error: profileReadErr } = await supabase
+      .from('profiles')
+      .select('id, email, company_id, role')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    console.log('[LinkToAZ] STEP 2 — profile read:', { existingProfile, error: profileReadErr });
+    if (profileReadErr) throw new Error(`SELECT profiles failed: ${profileReadErr.message} (code: ${profileReadErr.code}) hint: ${profileReadErr.hint}`);
+    if (!existingProfile) throw new Error(`Profile not found for user.id=${user.id}. Check if profile row exists and RLS SELECT policy allows it.`);
+
+    // STEP 3: Update profile
+    const { error: updateErr } = await supabase
       .from('profiles')
       .update({ company_id: AZ_COMPANY_ID, role })
       .eq('id', user.id);
 
-    if (error) {
-      console.error('[Auth] linkToAZ update error:', error.message);
-      throw error;
-    }
+    console.log('[LinkToAZ] STEP 3 — profile update:', { error: updateErr });
+    if (updateErr) throw new Error(`UPDATE profiles failed: ${updateErr.message} (code: ${updateErr.code}) details: ${updateErr.details} hint: ${updateErr.hint}`);
 
+    console.log('[LinkToAZ] All steps succeeded. Reloading profile...');
     loadingRef.current = false;
     await runAuthSequence(user);
   }, [user, runAuthSequence]);

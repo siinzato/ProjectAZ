@@ -2240,8 +2240,10 @@ function LinkCompanyScreen() {
     setError('');
     try {
       await linkToAZ();
-    } catch {
-      setError('Erro ao vincular empresa. Tente novamente.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[LinkCompanyScreen] Error:', msg);
+      setError(msg);
       setLinking(false);
     }
   };
@@ -2254,11 +2256,16 @@ function LinkCompanyScreen() {
         </div>
         <h2 className="text-xl font-black text-white mb-2">Vincular Empresa</h2>
         <p className="text-zinc-500 text-sm mb-1">Logado como</p>
-        <p className="text-white text-sm font-semibold mb-6">{user?.email}</p>
+        <p className="text-white text-sm font-semibold mb-1">{user?.email}</p>
+        <p className="text-zinc-600 text-xs mb-6 font-mono">{user?.id}</p>
         <p className="text-zinc-400 text-sm mb-6">
           Sua conta está ativa mas ainda não está vinculada a uma empresa.
         </p>
-        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4 text-left">
+            <p className="text-red-400 text-xs font-mono break-all whitespace-pre-wrap">{error}</p>
+          </div>
+        )}
         <button
           onClick={handleLink}
           disabled={linking}
