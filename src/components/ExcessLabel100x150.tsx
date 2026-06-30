@@ -1,298 +1,206 @@
-// ExcessLabel100x150 - Etiqueta de Excesso 100mm x 150mm
-// Layout: Cabeçalho vermelho, nome grande, blocos com borda, QTD grande
+/**
+ * ExcessLabel100x150
+ * Tamanho real: 100mm × 150mm via CSS.
+ * Capturado pelo html2canvas no tamanho real.
+ */
 
 import React from 'react';
 import type { LabelProduct } from './ShelfLabel100x40';
 
-const EW = 378;  // 100mm at 96dpi
-const EH = 567;  // 150mm at 96dpi
+export type QtySize = 'sm' | 'md' | 'lg' | 'xl';
 
-type QtySize = 'sm' | 'md' | 'lg' | 'xl';
-
-const qtySizeMap: Record<QtySize, number> = {
-  sm: 42,
-  md: 56,
-  lg: 72,
-  xl: 90,
+const qtySizePx: Record<QtySize, number> = {
+  sm: 28,
+  md: 38,
+  lg: 50,
+  xl: 64,
 };
 
-function getQtyFontSize(size: QtySize, digits: number): number {
-  const base = qtySizeMap[size];
-  if (digits >= 5) return Math.round(base * 0.55);
-  if (digits >= 4) return Math.round(base * 0.7);
-  if (digits >= 3) return Math.round(base * 0.85);
+function qtyFontPx(size: QtySize, digits: number): number {
+  const base = qtySizePx[size];
+  if (digits >= 6) return Math.round(base * 0.5);
+  if (digits >= 5) return Math.round(base * 0.62);
+  if (digits >= 4) return Math.round(base * 0.78);
   return base;
 }
 
-interface ExcessLabel100x150Props {
+function nameFontPx(name: string): number {
+  const n = name.length;
+  if (n > 60) return 13;
+  if (n > 45) return 15;
+  if (n > 30) return 17;
+  return 19;
+}
+
+const FONT = 'Arial, Helvetica, sans-serif';
+const CELL_LABEL: React.CSSProperties = {
+  fontSize: 8,
+  fontWeight: '700',
+  color: '#666',
+  letterSpacing: '0.8px',
+  textTransform: 'uppercase',
+  lineHeight: 1,
+  marginBottom: 2,
+};
+const CELL_VALUE: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: '900',
+  color: '#111',
+  textAlign: 'center',
+  overflow: 'hidden',
+  whiteSpace: 'nowrap',
+  textOverflow: 'ellipsis',
+  maxWidth: '100%',
+  lineHeight: 1.1,
+};
+
+interface ExcessLabelProps {
   product: LabelProduct;
   excessQty: number | string;
   qtySize?: QtySize;
-  previewScale?: number;
-  innerRef?: React.RefObject<HTMLDivElement>;
 }
 
-const ExcessLabel100x150Inner = React.forwardRef<
-  HTMLDivElement,
-  { product: LabelProduct; excessQty: number | string; qtySize: QtySize }
->(({ product, excessQty, qtySize }, ref) => {
-  const qty = String(excessQty || '0');
-  const digits = qty.replace(/\D/g, '').length || 1;
-  const qtyFontSize = getQtyFontSize(qtySize, digits);
+const ExcessLabel100x150 = React.forwardRef<HTMLDivElement, ExcessLabelProps>(
+  ({ product, excessQty, qtySize = 'lg' }, ref) => {
+    const qty = String(excessQty ?? '0');
+    const digits = qty.replace(/\D/g, '').length || 1;
+    const qpx = qtyFontPx(qtySize, digits);
+    const npx = nameFontPx(product.name);
 
-  const nameFontSize = (() => {
-    const len = product.name.length;
-    if (len > 55) return 13;
-    if (len > 40) return 15;
-    if (len > 25) return 17;
-    return 19;
-  })();
-
-  const cell: React.CSSProperties = {
-    border: '1px solid #555',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '3px 6px',
-    flex: 1,
-    overflow: 'hidden',
-  };
-
-  const cellLabel: React.CSSProperties = {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#666',
-    letterSpacing: '1px',
-    textTransform: 'uppercase',
-    lineHeight: 1,
-    marginBottom: 2,
-  };
-
-  const cellValue: React.CSSProperties = {
-    fontSize: 14,
-    fontWeight: '900',
-    color: '#111',
-    textAlign: 'center',
-    letterSpacing: '0.5px',
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
-    maxWidth: '100%',
-    lineHeight: 1.1,
-  };
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        width: EW,
-        height: EH,
-        border: '2px solid #111',
-        backgroundColor: '#ffffff',
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        boxSizing: 'border-box',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* HEADER — red alert, ~12% */}
+    return (
       <div
+        ref={ref}
         style={{
-          flex: '0 0 68px',
-          backgroundColor: '#dc2626',
+          width: '100mm',
+          height: '150mm',
+          border: '2px solid #111',
+          backgroundColor: '#ffffff',
+          fontFamily: FONT,
+          boxSizing: 'border-box',
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          borderBottom: '2px solid #111',
-          padding: '4px 8px',
-        }}
+          WebkitPrintColorAdjust: 'exact',
+          printColorAdjust: 'exact',
+        } as React.CSSProperties}
       >
-        <span style={{
-          fontSize: 18,
-          fontWeight: '900',
-          color: '#ffffff',
-          letterSpacing: '0.5px',
-          textAlign: 'center',
-          lineHeight: 1.2,
-        }}>
-          ⚠ EXCESSO DE ESTOQUE
-        </span>
-        <span style={{
-          fontSize: 10,
-          color: '#fca5a5',
-          letterSpacing: '1px',
-          marginTop: 3,
-          textAlign: 'center',
-        }}>
-          ESTOQUE FISICO MAIOR QUE O SISTEMA
-        </span>
-      </div>
-
-      {/* PRODUCT NAME — ~20% */}
-      <div
-        style={{
-          flex: '0 0 112px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '4px 10px',
-          borderBottom: '1.5px solid #333',
-          backgroundColor: '#fafafa',
-        }}
-      >
-        <span
+        {/* HEADER — red */}
+        <div
           style={{
-            fontSize: nameFontSize,
-            fontWeight: '900',
-            textAlign: 'center',
-            color: '#111',
-            lineHeight: '1.3',
-            wordBreak: 'break-word',
+            flex: '0 0 13%',
+            backgroundColor: '#dc2626',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderBottom: '2px solid #111',
+            padding: '3px 8px',
+          }}
+        >
+          <span style={{ fontSize: 16, fontWeight: '900', color: '#fff', letterSpacing: '0.4px', textAlign: 'center', lineHeight: 1.15 }}>
+            ⚠ EXCESSO DE ESTOQUE
+          </span>
+          <span style={{ fontSize: 8, color: '#fca5a5', letterSpacing: '1px', marginTop: 2, textAlign: 'center' }}>
+            ESTOQUE FISICO MAIOR QUE O SISTEMA
+          </span>
+        </div>
+
+        {/* NAME */}
+        <div
+          style={{
+            flex: '0 0 20%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '4px 10px',
+            borderBottom: '1.5px solid #333',
+            backgroundColor: '#fafafa',
             overflow: 'hidden',
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-          } as React.CSSProperties}
+          }}
         >
-          {product.name || '—'}
-        </span>
-      </div>
-
-      {/* INFO GRID: Location + SKU side by side — ~15% */}
-      <div
-        style={{
-          flex: '0 0 85px',
-          display: 'flex',
-          borderBottom: '1px solid #555',
-        }}
-      >
-        <div style={{ ...cell, borderRight: '1px solid #555' }}>
-          <span style={cellLabel}>Localização</span>
-          <span style={{ ...cellValue, fontSize: 15 }}>{product.location || '—'}</span>
+          <span
+            style={{
+              fontSize: npx,
+              fontWeight: '900',
+              textAlign: 'center',
+              color: '#111',
+              lineHeight: '1.3',
+              wordBreak: 'break-word',
+              overflow: 'hidden',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 3,
+            } as React.CSSProperties}
+          >
+            {product.name || '—'}
+          </span>
         </div>
-        <div style={cell}>
-          <span style={cellLabel}>SKU</span>
-          <span style={{ ...cellValue, fontSize: 13, letterSpacing: '0.3px' }}>{product.sku || '—'}</span>
+
+        {/* LOCATION + SKU grid */}
+        <div
+          style={{
+            flex: '0 0 15%',
+            display: 'flex',
+            borderBottom: '1px solid #555',
+          }}
+        >
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3px 6px', borderRight: '1px solid #555', overflow: 'hidden' }}>
+            <span style={CELL_LABEL}>Localização</span>
+            <span style={{ ...CELL_VALUE, fontSize: 14 }}>{product.location || '—'}</span>
+          </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3px 6px', overflow: 'hidden' }}>
+            <span style={CELL_LABEL}>SKU</span>
+            <span style={{ ...CELL_VALUE, fontSize: 12, letterSpacing: '0.3px' }}>{product.sku || '—'}</span>
+          </div>
+        </div>
+
+        {/* EAN */}
+        <div
+          style={{
+            flex: '0 0 14%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '3px 8px',
+            borderBottom: '1.5px solid #333',
+            overflow: 'hidden',
+          }}
+        >
+          <span style={CELL_LABEL}>EAN / GTIN</span>
+          <span style={{ fontSize: 18, fontWeight: '900', letterSpacing: '1.5px', color: '#111' }}>
+            {product.ean || '—'}
+          </span>
+        </div>
+
+        {/* QTY EXCESS — remaining */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#fff7ed',
+            padding: '6px 8px',
+            overflow: 'hidden',
+          }}
+        >
+          <span style={{ fontSize: 10, fontWeight: '700', color: '#ea580c', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 4 }}>
+            Quantidade em Excesso
+          </span>
+          <span style={{ fontSize: qpx, fontWeight: '900', color: '#dc2626', lineHeight: 1 }}>
+            {qty}
+          </span>
+          <span style={{ fontSize: 9, fontWeight: '600', color: '#ea580c', marginTop: 4, letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+            Unidades
+          </span>
         </div>
       </div>
-
-      {/* EAN row — ~15% */}
-      <div
-        style={{
-          flex: '0 0 85px',
-          display: 'flex',
-          ...cell,
-          borderBottom: '1.5px solid #333',
-          borderLeft: 'none',
-          borderRight: 'none',
-          borderTop: 'none',
-        }}
-      >
-        <span style={cellLabel}>EAN / GTIN</span>
-        <span
-          style={{
-            fontSize: 20,
-            fontWeight: '900',
-            letterSpacing: '2px',
-            color: '#111',
-            marginTop: 2,
-          }}
-        >
-          {product.ean || '—'}
-        </span>
-      </div>
-
-      {/* EXCESS QTY — remaining (~38%) */}
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: '#fff7ed',
-          padding: '6px 8px',
-        }}
-      >
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: '700',
-            color: '#ea580c',
-            letterSpacing: '1.5px',
-            textTransform: 'uppercase',
-            marginBottom: 4,
-          }}
-        >
-          Quantidade em Excesso
-        </span>
-        <span
-          style={{
-            fontSize: qtyFontSize,
-            fontWeight: '900',
-            color: '#dc2626',
-            lineHeight: 1,
-            letterSpacing: digits >= 4 ? '2px' : '4px',
-          }}
-        >
-          {qty}
-        </span>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: '600',
-            color: '#ea580c',
-            marginTop: 4,
-            letterSpacing: '1px',
-          }}
-        >
-          UNIDADES
-        </span>
-      </div>
-    </div>
-  );
-});
-
-const ExcessLabel100x150: React.FC<ExcessLabel100x150Props> = ({
-  product,
-  excessQty,
-  qtySize = 'lg',
-  previewScale = 1,
-  innerRef,
-}) => {
-  if (previewScale === 1) {
-    return <ExcessLabel100x150Inner ref={innerRef} product={product} excessQty={excessQty} qtySize={qtySize} />;
+    );
   }
+);
 
-  return (
-    <div
-      style={{
-        width: EW * previewScale,
-        height: EH * previewScale,
-        overflow: 'hidden',
-        position: 'relative',
-        flexShrink: 0,
-      }}
-    >
-      <div
-        style={{
-          transform: `scale(${previewScale})`,
-          transformOrigin: 'top left',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-        }}
-      >
-        <ExcessLabel100x150Inner ref={innerRef} product={product} excessQty={excessQty} qtySize={qtySize} />
-      </div>
-    </div>
-  );
-};
+ExcessLabel100x150.displayName = 'ExcessLabel100x150';
 
-export type { QtySize };
-export { EW as EXCESS_W, EH as EXCESS_H };
-export { ExcessLabel100x150Inner };
 export default ExcessLabel100x150;
