@@ -59,14 +59,23 @@ const LoginView: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setError('');
     if (!email.trim() || !password) { setError('Preencha e-mail e senha.'); return; }
     setLoading(true);
-    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (err) {
-      if (err.message.includes('Invalid login')) setError('E-mail ou senha incorretos.');
-      else if (err.message.includes('Email not confirmed')) setError('Confirme seu e-mail antes de entrar.');
-      else setError(err.message);
+    try {
+      const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (err) {
+        if (err.message.includes('Invalid login') || err.message.includes('invalid_credentials')) {
+          setError('E-mail ou senha incorretos.');
+        } else if (err.message.includes('Email not confirmed')) {
+          setError('Confirme seu e-mail antes de entrar.');
+        } else {
+          setError(err.message);
+        }
+        setLoading(false);
+      }
+      // On success the onAuthStateChange handler navigates — component unmounts
+    } catch {
+      setError('Falha na conexão. Tente novamente.');
       setLoading(false);
     }
-    // On success, onAuthStateChange in AuthContext will handle navigation
   };
 
   return (

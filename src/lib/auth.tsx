@@ -1,12 +1,6 @@
-// Auth context — provides user, profile, company to the whole app.
-// Pattern: onAuthStateChange sets user; a separate effect loads profile/company.
-// Safety: async work inside onAuthStateChange uses an IIFE to avoid deadlock.
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabase';
 import type { User, Session } from '@supabase/supabase-js';
-
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface Company {
   id: string;
@@ -32,7 +26,7 @@ interface AuthContextValue {
   session: Session | null;
   profile: Profile | null;
   company: Company | null;
-  companyId: string;          // '' when not loaded yet
+  companyId: string;
   loading: boolean;
   view: AuthView;
   setView: (v: AuthView) => void;
@@ -42,8 +36,6 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// ── Provider ──────────────────────────────────────────────────────────────────
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser]       = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -52,108 +44,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [view, setView]       = useState<AuthView>('landing');
 
-  // ── Load profile + company for a given user ──────────────────────────────
-  const loadProfileAndCompany = useCallback(async (u: User) => {
-    // Fetch profile
-    const { data: prof } = await supabase
+  const fetchProfile = useCallback(async (uid: string): Promise<Profile | null> => {
+    const { data } = await supabase
       .from('profiles')
       .select('id, name, email, company_id, role, must_change_password')
-      .eq('id', u.id)
+      .eq('id', uid)
       .maybeSingle();
-
-    if (!prof) {
-      // Profile not yet created (race condition) — retry once after 800ms
-      await new Promise(r => setTimeout(r, 800));
-      const { data: prof2 } = await supabase
-        .from('profiles')
-        .select('id, name, email, company_id, role, must_change_password')
-        .eq('id', u.id)
-        .maybeSingle();
-      setProfile(prof2 as Profile | null);
-      if (prof2?.company_id) {
-        const { data: comp } = await supabase
-          .from('companies')
-          .select('id, name, slug, plan, settings')
-          .eq('id', prof2.company_id)
-          .maybeSingle();
-        setCompany(comp as Company | null);
-      }
-    } else {
-      setProfile(prof as Profile);
-      if (prof.company_id) {
-        const { data: comp } = await supabase
-          .from('companies')
-          .select('id, name, slug, plan, settings')
-          .eq('id', prof.company_id)
-          .maybeSingle();
-        setCompany(comp as Company | null);
-      }
-    }
+    return data as Profile | null;
   }, []);
 
+  const fetchCompany = useCallback(async (companyId: string): Promise<Company | null> => {
+    const { data } = await supabase
+      .from('companies')
+      .select('id, name, slug, plan, settings')
+      .eq('id', companyId)
+      .maybeSingle();
+    return data as Company | null;
+  }, []);
+
+  const loadUser = useCallback(async (u: User) => {
+    let prof = await fetchProfile(u.id);
+    // Profile may not exist yet if trigger is slow — retry once
+    if (!prof) {
+      await new Promise(r => setTimeout(r, 1000));
+      prof = await fetchProfile(u.id);
+    }
+    setProfile(prof);
+    if (prof?.company_id) {
+      const comp = await fetchCompany(prof.company_id);
+      setCompany(comp);
+    }
+    return prof;
+  }, [fetchProfile, fetchCompany]);
+
   const refreshProfile = useCallback(async () => {
-    if (user) await loadProfileAndCompany(user);
-  }, [user, loadProfileAndCompany]);
+    if (!user) return;
+    const prof = await fetchProfile(user.id);
+    setProfile(prof);
+    if (prof?.company_id) {
+      const comp = await fetchCompany(prof.company_id);
+      setCompany(comp);
+    }
+  }, [user, fetchProfile, fetchCompany]);
 
-  // ── Initial session + subscribe ──────────────────────────────────────────
+  // Single source of truth: onAuthStateChange
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
+    let mounted = true;
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, s) => {
+      if (!mounted) return;
+
       setSession(s);
       setUser(s?.user ?? null);
-      if (s?.user) {
-        loadProfileAndCompany(s.user).finally(() => setLoading(false));
-      } else {
+
+      if (!s?.user) {
+        setProfile(null);
+        setCompany(null);
         setLoading(false);
+        return;
       }
+
+      // User signed in — load profile then decide view
+      const prof = await loadUser(s.user);
+      if (!mounted) return;
+
+      if (!s.user.email_confirmed_at) {
+        setView('confirm-email');
+      } else if (!prof || !prof.company_id) {
+        setView('signup');
+      } else {
+        setView('app');
+      }
+      setLoading(false);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      // Wrap async work in IIFE to avoid onAuthStateChange deadlock
-      (async () => {
-        if (s?.user) {
-          await loadProfileAndCompany(s.user);
-        } else {
-          setProfile(null);
-          setCompany(null);
-        }
-        setLoading(false);
-      })();
-    });
-
-    return () => subscription.unsubscribe();
-  }, [loadProfileAndCompany]);
-
-  // ── Derive view from auth state ──────────────────────────────────────────
-  useEffect(() => {
-    if (loading) return;
-    if (!user) {
-      setView(v => (v === 'app' ? 'landing' : v));
-      return;
-    }
-    // User is authenticated
-    if (!user.email_confirmed_at) {
-      setView('confirm-email');
-      return;
-    }
-    // Wait for profile to finish loading before routing to app
-    if (!profile) return;
-    if (!profile.company_id) {
-      // Authenticated but no company — show signup flow to finish setup
-      setView('signup');
-      return;
-    }
-    setView('app');
-  }, [loading, user, profile]);
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [loadUser]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setProfile(null);
     setCompany(null);
+    setUser(null);
+    setSession(null);
     setView('landing');
+    setLoading(false);
   }, []);
 
   const value: AuthContextValue = {
@@ -172,15 +150,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }
-
-// ── Role helpers ──────────────────────────────────────────────────────────────
 
 export function canManageUsers(role: string | undefined): boolean {
   return role === 'owner' || role === 'admin';
