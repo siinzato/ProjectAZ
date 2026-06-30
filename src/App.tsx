@@ -48,6 +48,7 @@ import { HeatmapEstoque } from './components/HeatmapEstoque';
 import { ProductImportPage } from './components/ProductImportPage';
 import { ImportedProductsPage } from './components/ImportedProductsPage';
 import { ImportHistoryPage } from './components/ImportHistoryPage';
+import { SafeDropdown } from './components/SafeDropdown';
 
 interface StatCardProps {
   title: string;
@@ -868,10 +869,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-100 font-sans text-zinc-900">
+    <div className="min-h-screen bg-zinc-100 font-sans text-zinc-900 flex flex-col">
 
-      {/* HEADER */}
-      <header className="bg-zinc-950 text-white p-4 shadow-lg sticky top-0 z-10 border-b border-zinc-800">
+      {/* HEADER - Fixed with high z-index */}
+      <header className="bg-zinc-950 text-white p-4 shadow-lg fixed top-0 left-0 right-0 z-[1000] border-b border-zinc-800">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3 w-full md:w-auto">
             <div className="bg-zinc-800 p-2 rounded-lg">
@@ -882,95 +883,104 @@ export default function App() {
             </h1>
           </div>
 
-          <nav className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-            {/* Heatmap Button with Submenu */}
-            <div className="relative group">
-              <button
-                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 ${
-                  ['heatmap', 'import', 'products', 'import-history'].includes(activeTab) ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-              >
-                <Map size={16}/>
-                <span className="hidden sm:inline">Heatmap Estoque</span>
-                <span className="sm:hidden">Heatmap</span>
-                <ChevronDown size={14} className="ml-1" />
-              </button>
-
-              {/* Submenu */}
-              <div className="absolute left-0 top-full mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all min-w-[200px] z-20">
+          <nav className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
+            {/* Heatmap Button with SafeDropdown */}
+            <SafeDropdown
+              active={['heatmap', 'import', 'products', 'import-history'].includes(activeTab)}
+              trigger={
                 <button
-                  onClick={() => setActiveTab('heatmap')}
-                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-t-lg transition ${
-                    activeTab === 'heatmap' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
+                  className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 ${
+                    ['heatmap', 'import', 'products', 'import-history'].includes(activeTab)
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                   }`}
                 >
-                  <Map size={16} />
-                  Ver Heatmap
+                  <Map size={16}/>
+                  <span className="hidden sm:inline">Heatmap Estoque</span>
+                  <span className="sm:hidden">Heatmap</span>
+                  <ChevronDown size={14} className="ml-1" />
                 </button>
-                <div className="h-px bg-zinc-700" />
-                <button
-                  onClick={() => setActiveTab('products')}
-                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 transition ${
-                    activeTab === 'products' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <Package size={16} />
-                  Produtos Importados
-                </button>
-                <div className="h-px bg-zinc-700" />
-                <button
-                  onClick={() => setActiveTab('import')}
-                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 transition ${
-                    activeTab === 'import' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <FileSpreadsheet size={16} />
-                  Importar Produtos
-                </button>
-                <div className="h-px bg-zinc-700" />
-                <button
-                  onClick={() => setActiveTab('import-history')}
-                  className={`w-full px-4 py-2.5 text-left text-sm font-medium flex items-center gap-2 rounded-b-lg transition ${
-                    activeTab === 'import-history' ? 'bg-emerald-600 text-white' : 'text-zinc-300 hover:bg-zinc-800'
-                  }`}
-                >
-                  <History size={16} />
-                  Historico de Importacoes
-                </button>
-              </div>
-            </div>
+              }
+              items={[
+                {
+                  id: 'heatmap',
+                  label: 'Ver Heatmap',
+                  icon: <Map size={16} />,
+                  onClick: () => setActiveTab('heatmap'),
+                  active: activeTab === 'heatmap',
+                },
+                {
+                  id: 'products',
+                  label: 'Produtos Importados',
+                  icon: <Package size={16} />,
+                  onClick: () => setActiveTab('products'),
+                  active: activeTab === 'products',
+                },
+                {
+                  id: 'import',
+                  label: 'Importar Produtos',
+                  icon: <FileSpreadsheet size={16} />,
+                  onClick: () => setActiveTab('import'),
+                  active: activeTab === 'import',
+                  divider: true,
+                },
+                {
+                  id: 'import-history',
+                  label: 'Historico de Importacoes',
+                  icon: <History size={16} />,
+                  onClick: () => setActiveTab('import-history'),
+                  active: activeTab === 'import-history',
+                },
+              ]}
+            />
 
             <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'admin' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'admin'
+                  ? 'bg-amber-600 text-white'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
               onClick={() => setActiveTab('admin')}
             >
-              <span className="flex items-center gap-2"><Lock size={16}/> Acesso Administrativo</span>
+              <span className="flex items-center gap-2"><Lock size={16}/> Acesso Admin</span>
             </button>
             <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'kpis' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'kpis'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
               onClick={() => setActiveTab('kpis')}
             >
-              <span className="flex items-center gap-2"><Target size={16}/> KPIs e Indicadores</span>
+              <span className="flex items-center gap-2"><Target size={16}/> KPIs</span>
             </button>
-            <div className="w-px bg-zinc-700 mx-1"></div>
+            <div className="w-px bg-zinc-700 mx-1 hidden md:block"></div>
             <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-zinc-200 text-zinc-900' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'dashboard'
+                  ? 'bg-zinc-200 text-zinc-900'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
               onClick={() => setActiveTab('dashboard')}
             >
-              Dashboard Geral
+              Dashboard
             </button>
             <button
-              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'input' ? 'bg-zinc-200 text-zinc-900' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`}
+              className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'input'
+                  ? 'bg-zinc-200 text-zinc-900'
+                  : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+              }`}
               onClick={() => setActiveTab('input')}
             >
-              + Nova Contagem
+              + Contar
             </button>
           </nav>
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
-      <main className="max-w-7xl mx-auto p-4 md:p-6">
+      {/* MAIN CONTENT - with padding-top to account for fixed header */}
+      <main className="flex-1 mt-[76px] overflow-y-auto overflow-x-hidden">
 
         {/* ABA HEATMAP */}
         {activeTab === 'heatmap' && (
@@ -1141,7 +1151,7 @@ export default function App() {
               {showAIChat && (
                 <div className="mt-4 bg-zinc-800 rounded-lg border border-zinc-700 overflow-hidden">
                   {/* Chat Messages */}
-                  <div className="max-h-64 overflow-y-auto p-4 space-y-3">
+                  <div className="overflow-y-auto p-4 space-y-3" style={{ maxHeight: '300px' }}>
                     {aiMessages.length === 0 && (
                       <div className="text-center py-4">
                         <Bot size={32} className="mx-auto text-zinc-600 mb-2" />
@@ -1251,7 +1261,7 @@ export default function App() {
                       Top 10 Acuracidades (Linhas)
                     </h3>
                   </div>
-                  <div className="p-0 max-h-[280px] overflow-y-auto">
+                  <div className="p-0">
                     <table className="w-full text-sm">
                       <tbody>
                         {globais.melhores.map((m, i) => (
@@ -1276,8 +1286,8 @@ export default function App() {
 
               {/* COLUNA DIREITA: Tabela de Controle */}
               <div className="lg:col-span-2">
-                <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden h-full flex flex-col">
-                  <div className="bg-zinc-50 p-4 border-b border-zinc-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div className="bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden flex flex-col">
+                  <div className="bg-zinc-50 p-4 border-b border-zinc-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sticky top-0 z-10">
                     <h3 className="text-sm font-bold text-zinc-800 flex items-center gap-2">
                       <BarChart3 size={18} className="text-zinc-600" />
                       Controle e Desempenho por Linha
@@ -1289,7 +1299,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="overflow-x-auto flex-1 max-h-[600px]">
+                  <div className="overflow-x-auto flex-1">
                     <table className="w-full text-sm text-left whitespace-nowrap">
                       <thead className="text-[10px] text-zinc-500 uppercase bg-zinc-50 border-b border-zinc-200 sticky top-0 z-10 shadow-sm">
                         <tr>
@@ -1499,7 +1509,7 @@ export default function App() {
                       <History size={18} />
                       Histórico de Inventários
                     </div>
-                    <div className="p-4 max-h-[300px] overflow-y-auto">
+                    <div className="p-4 overflow-y-auto" style={{ maxHeight: '400px' }}>
                       {snapshots.length === 0 ? (
                         <p className="text-sm text-zinc-500 text-center py-4">
                           Nenhum inventário arquivado ainda.
@@ -1881,7 +1891,7 @@ export default function App() {
                 <div className="bg-emerald-50 p-3 sm:p-4 border-b border-emerald-100 text-emerald-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
                   <Trophy size={16} className="text-emerald-500"/> Top Melhores Acuracidades ({globais.melhores.length} linhas)
                 </div>
-                <div className="max-h-[300px] overflow-y-auto">
+                <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
                   <table className="w-full text-xs sm:text-sm">
                     <tbody>
                       {globais.melhores.map((item, i) => (
@@ -1908,7 +1918,7 @@ export default function App() {
                 <div className="bg-red-50 p-3 sm:p-4 border-b border-red-100 text-red-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
                   <TrendingUp size={16} className="text-red-500 rotate-180"/> Piores Acuracidades ({globais.piores.length} linhas)
                 </div>
-                <div className="max-h-[300px] overflow-y-auto">
+                <div className="overflow-y-auto" style={{ maxHeight: '400px' }}>
                   <table className="w-full text-xs sm:text-sm">
                     <tbody>
                       {globais.piores.map((item, i) => (
@@ -1983,7 +1993,7 @@ export default function App() {
                 <div className="bg-amber-50 p-3 sm:p-4 border-b border-amber-100 text-amber-900 font-bold text-xs sm:text-sm uppercase tracking-wider flex items-center gap-2">
                   <Clock size={16} className="text-amber-500"/> Linhas em Andamento
                 </div>
-                <div className="max-h-[200px] overflow-y-auto">
+                <div className="overflow-y-auto" style={{ maxHeight: '350px' }}>
                   <table className="w-full text-xs sm:text-sm">
                     <tbody>
                       {globais.tabela.filter(b => b.status === 'ANDAMENTO').map((item) => (
@@ -2244,7 +2254,7 @@ export default function App() {
                 <div className="bg-zinc-900 p-4 border-b border-zinc-800 text-white font-bold text-sm">
                   Desempenho por Linha/Marca
                 </div>
-                <div className="overflow-x-auto max-h-[400px]">
+                <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left whitespace-nowrap">
                     <thead className="text-[10px] text-zinc-500 uppercase bg-zinc-50 border-b border-zinc-200 sticky top-0">
                       <tr>

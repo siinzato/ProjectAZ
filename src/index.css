@@ -1,3 +1,121 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Global Layout Fixes */
+
+/* Prevent horizontal scroll on body */
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* App container structure */
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Z-index scale for layered components */
+:root {
+  --z-base: 1;
+  --z-dropdown: 2000;
+  --z-sticky: 1000;
+  --z-fixed: 1100;
+  --z-modal-backdrop: 3000;
+  --z-modal: 3100;
+  --z-popover: 2000;
+  --z-tooltip: 4000;
+  --z-toast: 5000;
+}
+
+/* Proper scroll containers */
+.scroll-y {
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Table scroll container */
+.table-scroll-container {
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+}
+
+/* Card max heights for internal scroll */
+.card-scroll {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Fix for dropdown menus - render above everything */
+.dropdown-portal {
+  position: fixed !important;
+  z-index: var(--z-dropdown) !important;
+}
+
+/* Ensure header stays on top */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+/* Fix for overflow hidden in containers that contain dropdowns */
+.no-overflow-hidden {
+  overflow: visible !important;
+}
+
+/* Mobile responsive fixes */
+@media (max-width: 768px) {
+  /* Tables scroll horizontally on mobile */
+  .table-container-mobile {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text overflow */
+  .text-truncate-mobile {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+  }
+}
+
+/* Prevent layout shifts */
+.prevent-layout-shift {
+  contain: layout;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1f1 #f1f1f1;
+}
