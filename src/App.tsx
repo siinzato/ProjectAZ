@@ -2228,29 +2228,86 @@ function AppContent() {
   );
 }
 
+// ── Link Company screen — shown when authenticated user has no company ────────
+
+function LinkCompanyScreen() {
+  const auth = useAuth();
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleLink = async () => {
+    setLinking(true);
+    setError('');
+    try {
+      // @ts-ignore
+      await auth.linkToAZ?.();
+    } catch {
+      setError('Erro ao vincular empresa. Tente novamente.');
+      setLinking(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center px-4">
+      <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 text-center shadow-2xl">
+        <div className="w-14 h-14 bg-emerald-500/15 rounded-2xl flex items-center justify-center mx-auto mb-5">
+          <BarChart3 size={28} className="text-emerald-400" />
+        </div>
+        <h2 className="text-xl font-black text-white mb-2">Vincular Empresa</h2>
+        <p className="text-zinc-400 text-sm mb-6">
+          Sua conta está ativa mas ainda não está vinculada a uma empresa.
+        </p>
+        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+        <button
+          onClick={handleLink}
+          disabled={linking}
+          className="w-full flex items-center justify-center gap-2 py-3.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-white rounded-xl font-bold text-sm transition mb-3"
+        >
+          {linking ? <Loader2 size={16} className="animate-spin" /> : 'Vincular à empresa AZ'}
+        </button>
+        <button onClick={auth.signOut} className="text-xs text-zinc-500 hover:text-zinc-300 transition">
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── App shell ─────────────────────────────────────────────────────────────────
+
 export default function App() {
   const { view, loading } = useAuth();
 
-  if (loading) {
+  if (loading || view === 'loading') {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="text-center">
           <div className="flex items-center gap-3 mb-6">
             <div className="bg-zinc-800 p-2 rounded-lg">
-              <Package className="text-zinc-300" size={24} />
+              <BarChart3 className="text-emerald-400" size={24} />
             </div>
             <span className="text-xl font-bold text-white tracking-wide">
-              Inventory<span className="text-zinc-400 font-light">Blind</span>
+              Inventory<span className="text-emerald-400 font-light">Blind</span>
             </span>
           </div>
           <Loader2 className="mx-auto animate-spin text-zinc-400" size={36} />
+          <p className="text-zinc-600 text-sm mt-3">Carregando...</p>
         </div>
       </div>
     );
   }
 
+  // Auth screens (only for non-authenticated users)
   if (view === 'landing') return <LandingPage />;
   if (view === 'login' || view === 'signup' || view === 'forgot' || view === 'confirm-email') return <AuthPage />;
+
+  // Authenticated-only screens
+  if (view === 'link-company') return <LinkCompanyScreen />;
+  if (view === 'complete-profile') return <LinkCompanyScreen />; // same UI for now
+
+  // Main app
   if (view === 'app') return <AppContent />;
+
+  // Fallback — should never reach here for authenticated users
   return <LandingPage />;
 }
