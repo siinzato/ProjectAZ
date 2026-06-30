@@ -41,6 +41,7 @@ import {
   FileSpreadsheet,
   ChevronRight,
   Undo2,
+  Tag,
   type LucideIcon
 } from 'lucide-react';
 import { supabase, type BrandData, type TopVenda, type CustomKPI, type InventorySnapshot, type InventoryBrandHistory } from './lib/supabase';
@@ -51,6 +52,7 @@ import { ImportHistoryPage } from './components/ImportHistoryPage';
 import { SafeDropdown } from './components/SafeDropdown';
 import { RankingsPage } from './components/RankingsPage';
 import { DashboardRankingPreview } from './components/DashboardRankingPreview';
+import { LabelGeneratorPage } from './components/LabelGeneratorPage';
 
 interface StatCardProps {
   title: string;
@@ -935,6 +937,33 @@ export default function App() {
               ]}
             />
 
+            {/* Ferramentas menu */}
+            <SafeDropdown
+              active={activeTab === 'label-generator'}
+              trigger={
+                <button
+                  className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 flex-shrink-0 ${
+                    activeTab === 'label-generator'
+                      ? 'bg-teal-600 text-white'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  <Tag size={16} />
+                  <span className="hidden sm:inline">Ferramentas</span>
+                  <ChevronDown size={14} className="ml-1" />
+                </button>
+              }
+              items={[
+                {
+                  id: 'label-generator',
+                  label: 'Gerador de Etiquetas',
+                  icon: <Tag size={16} />,
+                  onClick: () => setActiveTab('label-generator'),
+                  active: activeTab === 'label-generator',
+                },
+              ]}
+            />
+
             <button
               className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'admin'
@@ -983,7 +1012,7 @@ export default function App() {
       {/* MAIN CONTENT - with padding-top to account for fixed header */}
       <main className="flex-1 mt-[76px] overflow-y-auto overflow-x-hidden">
 
-        {activeTab !== 'rankings' && (
+        {activeTab !== 'rankings' && activeTab !== 'label-generator' && (
           <>
 
         {/* ABA HEATMAP */}
@@ -1818,7 +1847,7 @@ export default function App() {
           </div>
         )}
 
-          </> /* end activeTab !== 'rankings' */
+          </> /* end activeTab !== 'rankings' && activeTab !== 'label-generator' */
         )}
 
       </main>
@@ -1835,6 +1864,13 @@ export default function App() {
             piores={globais.piores}
             inProgress={globais.tabela.filter(b => b.status === 'ANDAMENTO')}
           />
+        </div>
+      )}
+
+      {/* FERRAMENTAS: GERADOR DE ETIQUETAS */}
+      {activeTab === 'label-generator' && (
+        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+          <LabelGeneratorPage onBack={() => setActiveTab('dashboard')} />
         </div>
       )}
 
