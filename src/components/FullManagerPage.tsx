@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   ArrowLeft, LayoutDashboard, Calendar, Plus, Package,
-  ClipboardCheck, Clock, ChevronRight,
+  ClipboardCheck, Clock, ChevronRight, ShieldAlert,
 } from 'lucide-react';
 import FullDashboard from './FullDashboard';
 import FullAgenda from './FullAgenda';
@@ -9,18 +9,20 @@ import FullNewOperation from './FullNewOperation';
 import FullPicking from './FullPicking';
 import FullChecking from './FullChecking';
 import FullHistory from './FullHistory';
+import FullAdminPanel from './FullAdminPanel';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type FullTab = 'dashboard' | 'agenda' | 'new-operation' | 'picking' | 'checking' | 'history';
+type FullTab = 'dashboard' | 'agenda' | 'new-operation' | 'picking' | 'checking' | 'history' | 'admin';
 
-const TABS: { id: FullTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} /> },
-  { id: 'agenda', label: 'Agendamentos', icon: <Calendar size={16} /> },
-  { id: 'new-operation', label: 'Nova Operação', icon: <Plus size={16} /> },
-  { id: 'picking', label: 'Separação', icon: <Package size={16} /> },
-  { id: 'checking', label: 'Conferência', icon: <ClipboardCheck size={16} /> },
-  { id: 'history', label: 'Histórico', icon: <Clock size={16} /> },
+const TABS: { id: FullTab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
+  { id: 'dashboard',     label: 'Dashboard',     icon: <LayoutDashboard size={16} /> },
+  { id: 'agenda',        label: 'Agendamentos',   icon: <Calendar size={16} /> },
+  { id: 'new-operation', label: 'Nova Operação',  icon: <Plus size={16} /> },
+  { id: 'picking',       label: 'Separação',      icon: <Package size={16} /> },
+  { id: 'checking',      label: 'Conferência',    icon: <ClipboardCheck size={16} /> },
+  { id: 'history',       label: 'Histórico',      icon: <Clock size={16} /> },
+  { id: 'admin',         label: 'Administração',  icon: <ShieldAlert size={16} />, adminOnly: true },
 ];
 
 // ── Breadcrumb ────────────────────────────────────────────────────────────────
@@ -31,7 +33,9 @@ const Breadcrumb: React.FC<{ tab: FullTab }> = ({ tab }) => {
     <div className="flex items-center gap-1.5 text-xs text-zinc-400">
       <span>Full Manager</span>
       <ChevronRight size={12} />
-      <span className="text-zinc-700 font-semibold">{t?.label}</span>
+      <span className={`font-semibold ${tab === 'admin' ? 'text-red-400' : 'text-zinc-300'}`}>
+        {t?.label}
+      </span>
     </div>
   );
 };
@@ -53,7 +57,6 @@ const FullManagerPage: React.FC<FullManagerPageProps> = ({ onBack }) => {
     setActiveTab(tab);
   };
 
-  // Clear pending IDs when leaving those tabs
   const handleTabClick = (tab: FullTab) => {
     if (tab !== 'picking') setPendingPickingOpId(undefined);
     if (tab !== 'checking') setPendingCheckingOpId(undefined);
@@ -73,8 +76,8 @@ const FullManagerPage: React.FC<FullManagerPageProps> = ({ onBack }) => {
               <span className="hidden sm:inline">Voltar</span>
             </button>
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-emerald-500 rounded-lg">
-                <Package size={18} className="text-white" />
+              <div className={`p-1.5 rounded-lg ${activeTab === 'admin' ? 'bg-red-600' : 'bg-emerald-500'} transition`}>
+                {activeTab === 'admin' ? <ShieldAlert size={18} className="text-white" /> : <Package size={18} className="text-white" />}
               </div>
               <div>
                 <h1 className="font-black text-base leading-tight">Full Manager</h1>
@@ -85,20 +88,28 @@ const FullManagerPage: React.FC<FullManagerPageProps> = ({ onBack }) => {
 
           {/* Tabs */}
           <div className="flex gap-1 overflow-x-auto scrollbar-hide pb-0.5">
-            {TABS.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => handleTabClick(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition flex-shrink-0 ${
-                  activeTab === tab.id
-                    ? 'bg-emerald-600 text-white'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
+            {TABS.map(tab => {
+              const isAdmin = tab.adminOnly;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabClick(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition flex-shrink-0 ${
+                    isActive
+                      ? isAdmin
+                        ? 'bg-red-600 text-white'
+                        : 'bg-emerald-600 text-white'
+                      : isAdmin
+                        ? 'text-red-400 hover:text-white hover:bg-red-700/50 border border-red-800/40'
+                        : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -137,6 +148,8 @@ const FullManagerPage: React.FC<FullManagerPageProps> = ({ onBack }) => {
         )}
 
         {activeTab === 'history' && <FullHistory />}
+
+        {activeTab === 'admin' && <FullAdminPanel />}
       </div>
     </div>
   );
