@@ -58,7 +58,9 @@ import FullManagerPage from './components/FullManagerPage';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import UserManagementPage from './components/UserManagementPage';
+import SecurityPage from './components/SecurityPage';
 import { useAuth, canManageUsers } from './lib/auth';
+import { hasPermission } from './lib/permissionService';
 
 interface StatCardProps {
   title: string;
@@ -1035,6 +1037,18 @@ function AppContent() {
                 <span className="flex items-center gap-2"><UserCog size={16}/> Usuários</span>
               </button>
             )}
+            {hasPermission(profile?.role, 'security.view') && (
+              <button
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                  activeTab === 'security'
+                    ? 'bg-emerald-700 text-white'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+                onClick={() => setActiveTab('security')}
+              >
+                <span className="flex items-center gap-2"><ShieldCheck size={16}/> Segurança</span>
+              </button>
+            )}
             <div className="w-px bg-zinc-700 mx-1 hidden md:block"></div>
             <button
               onClick={signOut}
@@ -1903,6 +1917,13 @@ function AppContent() {
         </div>
       )}
 
+      {/* CENTRAL DE SEGURANÇA */}
+      {activeTab === 'security' && (
+        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-950 overflow-y-auto">
+          <SecurityPage onBack={() => setActiveTab('dashboard')} />
+        </div>
+      )}
+
       {/* MODAL ADICIONAR MARCA/LINHA */}
       {showAddBrandModal && (
         <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -2256,8 +2277,7 @@ function LinkCompanyScreen() {
         </div>
         <h2 className="text-xl font-black text-white mb-2">Vincular Empresa</h2>
         <p className="text-zinc-500 text-sm mb-1">Logado como</p>
-        <p className="text-white text-sm font-semibold mb-1">{user?.email}</p>
-        <p className="text-zinc-600 text-xs mb-6 font-mono">{user?.id}</p>
+        <p className="text-white text-sm font-semibold mb-6">{user?.email}</p>
         <p className="text-zinc-400 text-sm mb-6">
           Sua conta está ativa mas ainda não está vinculada a uma empresa.
         </p>

@@ -269,12 +269,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const role = user.email === 'victor@azbuy.com.br' ? 'owner' : 'viewer';
 
-    console.log('[LinkToAZ] Starting diagnosis...');
-    console.log('[LinkToAZ] user.id:', user.id);
-    console.log('[LinkToAZ] user.email:', user.email);
-    console.log('[LinkToAZ] target company_id:', AZ_COMPANY_ID);
-    console.log('[LinkToAZ] target role:', role);
-
     // STEP 1: Verify company exists
     const { data: company, error: companyErr } = await supabase
       .from('companies')
