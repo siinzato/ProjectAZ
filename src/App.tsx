@@ -53,6 +53,7 @@ import { SafeDropdown } from './components/SafeDropdown';
 import { RankingsPage } from './components/RankingsPage';
 import { DashboardRankingPreview } from './components/DashboardRankingPreview';
 import { LabelGeneratorPage } from './components/LabelGeneratorPage';
+import FullManagerPage from './components/FullManagerPage';
 
 interface StatCardProps {
   title: string;
@@ -939,11 +940,11 @@ export default function App() {
 
             {/* Ferramentas menu */}
             <SafeDropdown
-              active={activeTab === 'label-generator'}
+              active={['label-generator', 'full-manager'].includes(activeTab)}
               trigger={
                 <button
                   className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1 flex-shrink-0 ${
-                    activeTab === 'label-generator'
+                    ['label-generator', 'full-manager'].includes(activeTab)
                       ? 'bg-teal-600 text-white'
                       : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
                   }`}
@@ -960,6 +961,13 @@ export default function App() {
                   icon: <Tag size={16} />,
                   onClick: () => setActiveTab('label-generator'),
                   active: activeTab === 'label-generator',
+                },
+                {
+                  id: 'full-manager',
+                  label: 'Full Manager',
+                  icon: <Package size={16} />,
+                  onClick: () => setActiveTab('full-manager'),
+                  active: activeTab === 'full-manager',
                 },
               ]}
             />
@@ -1012,7 +1020,7 @@ export default function App() {
       {/* MAIN CONTENT - with padding-top to account for fixed header */}
       <main className="flex-1 mt-[76px] overflow-y-auto overflow-x-hidden">
 
-        {activeTab !== 'rankings' && activeTab !== 'label-generator' && (
+        {activeTab !== 'rankings' && activeTab !== 'label-generator' && activeTab !== 'full-manager' && (
           <>
 
         {/* ABA HEATMAP */}
@@ -1847,7 +1855,7 @@ export default function App() {
           </div>
         )}
 
-          </> /* end activeTab !== 'rankings' && activeTab !== 'label-generator' */
+          </> /* end activeTab !== 'rankings' && activeTab !== 'label-generator' && activeTab !== 'full-manager' */
         )}
 
       </main>
@@ -1871,6 +1879,13 @@ export default function App() {
       {activeTab === 'label-generator' && (
         <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
           <LabelGeneratorPage onBack={() => setActiveTab('dashboard')} />
+        </div>
+      )}
+
+      {/* FERRAMENTAS: FULL MANAGER */}
+      {activeTab === 'full-manager' && (
+        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+          <FullManagerPage onBack={() => setActiveTab('dashboard')} />
         </div>
       )}
 
