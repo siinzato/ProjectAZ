@@ -42,6 +42,7 @@ import {
   ChevronRight,
   Undo2,
   Tag,
+  UserCog,
   type LucideIcon
 } from 'lucide-react';
 import { supabase, type BrandData, type TopVenda, type CustomKPI, type InventorySnapshot, type InventoryBrandHistory } from './lib/supabase';
@@ -54,6 +55,10 @@ import { RankingsPage } from './components/RankingsPage';
 import { DashboardRankingPreview } from './components/DashboardRankingPreview';
 import { LabelGeneratorPage } from './components/LabelGeneratorPage';
 import FullManagerPage from './components/FullManagerPage';
+import LandingPage from './components/LandingPage';
+import AuthPage from './components/AuthPage';
+import UserManagementPage from './components/UserManagementPage';
+import { useAuth, canManageUsers } from './lib/auth';
 
 interface StatCardProps {
   title: string;
@@ -117,7 +122,8 @@ interface GlobalData {
   piores: { nome: string; valor: string }[];
 }
 
-export default function App() {
+function AppContent() {
+  const { profile, company, companyId, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const [brandsData, setBrandsData] = useState<BrandData[]>([]);
@@ -131,10 +137,10 @@ export default function App() {
   const [showAddBrandModal, setShowAddBrandModal] = useState(false);
   const [showAddKPIModal, setShowAddKPIModal] = useState(false);
 
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [adminUser, setAdminUser] = useState('');
-  const [adminPass, setAdminPass] = useState('');
-  const [loginError, setLoginError] = useState(false);
+  const isLoggedIn = canManageUsers(profile?.role);
+  const [adminUser] = useState('');
+  const [adminPass] = useState('');
+  const [loginError] = useState(false);
 
   const [newBrandName, setNewBrandName] = useState('');
   const [newBrandTotalSku, setNewBrandTotalSku] = useState('');
@@ -164,14 +170,15 @@ export default function App() {
 
   // Load data from Supabase
   useEffect(() => {
+    if (!companyId) return;
     async function loadData() {
       try {
         setLoading(true);
 
         const [brandsRes, vendasRes, kpisRes] = await Promise.all([
-          supabase.from('inventory_brands').select('*').order('order_index'),
-          supabase.from('top_vendas').select('*').order('order_index'),
-          supabase.from('custom_kpis').select('*').order('order_index')
+          supabase.from('inventory_brands').select('*').eq('company_id', companyId).order('order_index'),
+          supabase.from('top_vendas').select('*').eq('company_id', companyId).order('order_index'),
+          supabase.from('custom_kpis').select('*').eq('company_id', companyId).order('order_index')
         ]);
 
         if (brandsRes.error) throw brandsRes.error;
@@ -201,25 +208,27 @@ export default function App() {
     }
 
     loadData();
-  }, []);
+  }, [companyId]);
 
   // Load snapshots (history)
   const loadSnapshots = useCallback(async () => {
+    if (!companyId) return;
     const { data, error } = await supabase
       .from('inventory_snapshots')
       .select('*')
+      .eq('company_id', companyId)
       .order('end_date', { ascending: false });
 
     if (!error && data) {
       setSnapshots(data);
     }
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (companyId) {
       loadSnapshots();
     }
-  }, [isLoggedIn, loadSnapshots]);
+  }, [companyId, loadSnapshots]);
 
   // Archive current inventory and reset
   const handleResetInventory = async (inventoryName: string, notes: string) => {
@@ -237,6 +246,7 @@ export default function App() {
       const { data: snapshotData, error: snapshotError } = await supabase
         .from('inventory_snapshots')
         .insert({
+          company_id: companyId,
           name: inventoryName,
           start_date: inventoryStartDate || new Date().toISOString(),
           end_date: new Date().toISOString(),
@@ -688,6 +698,7 @@ export default function App() {
     const { data, error } = await supabase
       .from('inventory_brands')
       .insert({
+        company_id: companyId,
         brand: newBrandName,
         total_sku: parseInt(newBrandTotalSku),
         done_sku: 0,
@@ -754,16 +765,6 @@ export default function App() {
     setTimeout(() => setCountSuccess(false), 3000);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (adminUser === 'admin' && adminPass === 'admin') {
-      setIsLoggedIn(true);
-      setLoginError(false);
-    } else {
-      setLoginError(true);
-    }
-  };
-
   const handleUpdateTopVenda = useCallback(async (index: number, field: keyof TopVenda, value: string) => {
     const item = topVendas[index];
     if (!item) return;
@@ -795,6 +796,7 @@ export default function App() {
       .from('custom_kpis')
       .insert({
         ...newKPI,
+        company_id: companyId,
         order_index: maxOrder + 1
       })
       .select();
@@ -883,8 +885,13 @@ export default function App() {
               <Package className="text-zinc-300" size={24} />
             </div>
             <h1 className="text-xl font-bold tracking-wide">
-              Inventory<span className="text-zinc-400 font-light">BlindAZ</span>
+              Inventory<span className="text-zinc-400 font-light">Blind</span>
             </h1>
+            {company && (
+              <span className="hidden sm:inline text-xs font-medium text-zinc-500 bg-zinc-800 px-2 py-1 rounded-md border border-zinc-700">
+                {company.name}
+              </span>
+            )}
           </div>
 
           <nav className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0 scrollbar-thin">
@@ -1013,6 +1020,27 @@ export default function App() {
             >
               + Contar
             </button>
+            {canManageUsers(profile?.role) && (
+              <button
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 ${
+                  activeTab === 'users'
+                    ? 'bg-blue-600 text-white'
+                    : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                }`}
+                onClick={() => setActiveTab('users')}
+              >
+                <span className="flex items-center gap-2"><UserCog size={16}/> Usuários</span>
+              </button>
+            )}
+            <div className="w-px bg-zinc-700 mx-1 hidden md:block"></div>
+            <button
+              onClick={signOut}
+              className="px-3 py-2 rounded-md text-sm font-semibold transition-all whitespace-nowrap flex-shrink-0 text-zinc-400 hover:text-white hover:bg-zinc-800 flex items-center gap-2"
+              title="Sair"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
           </nav>
         </div>
       </header>
@@ -1020,7 +1048,7 @@ export default function App() {
       {/* MAIN CONTENT - with padding-top to account for fixed header */}
       <main className="flex-1 mt-[76px] overflow-y-auto overflow-x-hidden">
 
-        {activeTab !== 'rankings' && activeTab !== 'label-generator' && activeTab !== 'full-manager' && (
+        {activeTab !== 'rankings' && activeTab !== 'label-generator' && activeTab !== 'full-manager' && activeTab !== 'users' && (
           <>
 
         {/* ABA HEATMAP */}
@@ -1033,7 +1061,7 @@ export default function App() {
               }
             }}
             isAdmin={isLoggedIn}
-            onLogout={() => setIsLoggedIn(false)}
+            onLogout={() => {}}
           />
         )}
 
@@ -1371,37 +1399,16 @@ export default function App() {
         {activeTab === 'admin' && (
           <div className="max-w-4xl mx-auto">
             {!isLoggedIn ? (
-              // TELA DE LOGIN
               <div className="bg-white rounded-xl shadow-md border border-zinc-200 overflow-hidden mt-6 max-w-md mx-auto">
                 <div className="bg-amber-600 p-6 text-center text-white">
                   <Lock size={40} className="mx-auto mb-2 opacity-80" />
                   <h2 className="text-xl font-bold tracking-wide">Acesso Restrito</h2>
-                  <p className="text-amber-100 text-sm mt-1">Insira suas credenciais de administrador.</p>
+                  <p className="text-amber-100 text-sm mt-1">Esta área é restrita a administradores e proprietários.</p>
                 </div>
-                <form onSubmit={handleLogin} className="p-6 space-y-4">
-                  {loginError && (
-                    <div className="p-3 bg-red-50 text-red-600 border border-red-200 rounded text-sm text-center font-medium">
-                      Usuário ou senha incorretos. (Dica: admin / admin)
-                    </div>
-                  )}
-                  <div>
-                    <label className="block text-sm font-bold text-zinc-700 mb-1">Usuário</label>
-                    <input
-                      type="text" required value={adminUser} onChange={e => setAdminUser(e.target.value)}
-                      className="w-full p-3 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-zinc-700 mb-1">Senha</label>
-                    <input
-                      type="password" required value={adminPass} onChange={e => setAdminPass(e.target.value)}
-                      className="w-full p-3 border border-zinc-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                    />
-                  </div>
-                  <button type="submit" className="w-full bg-zinc-900 hover:bg-black text-white font-bold py-3 rounded-lg transition-colors mt-2">
-                    Entrar no Sistema
-                  </button>
-                </form>
+                <div className="p-6 text-center">
+                  <p className="text-sm text-zinc-600">Você não tem permissão para acessar este painel.</p>
+                  <p className="text-xs text-zinc-400 mt-1">Perfil atual: {profile?.role ?? '—'}</p>
+                </div>
               </div>
             ) : (
               // PAINEL ADMINISTRATIVO
@@ -1413,9 +1420,6 @@ export default function App() {
                     </h2>
                     <p className="text-sm text-zinc-500">Altere parâmetros do sistema e dados gerenciais.</p>
                   </div>
-                  <button onClick={() => setIsLoggedIn(false)} className="flex items-center gap-2 text-sm text-zinc-600 hover:text-red-600 font-medium px-3 py-2 rounded-lg hover:bg-red-50 transition">
-                    <LogOut size={16}/> Sair
-                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1889,6 +1893,13 @@ export default function App() {
         </div>
       )}
 
+      {/* GERENCIAMENTO DE USUÁRIOS */}
+      {activeTab === 'users' && (
+        <div className="fixed inset-0 top-[76px] z-[900] bg-zinc-50 overflow-y-auto">
+          <UserManagementPage onBack={() => setActiveTab('dashboard')} />
+        </div>
+      )}
+
       {/* MODAL ADICIONAR MARCA/LINHA */}
       {showAddBrandModal && (
         <div className="fixed inset-0 bg-zinc-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -2212,4 +2223,31 @@ export default function App() {
 
     </div>
   );
+}
+
+export default function App() {
+  const { view, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-center">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="bg-zinc-800 p-2 rounded-lg">
+              <Package className="text-zinc-300" size={24} />
+            </div>
+            <span className="text-xl font-bold text-white tracking-wide">
+              Inventory<span className="text-zinc-400 font-light">Blind</span>
+            </span>
+          </div>
+          <Loader2 className="mx-auto animate-spin text-zinc-400" size={36} />
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'landing') return <LandingPage />;
+  if (view === 'login' || view === 'signup' || view === 'forgot' || view === 'confirm-email') return <AuthPage />;
+  if (view === 'app') return <AppContent />;
+  return <LandingPage />;
 }
