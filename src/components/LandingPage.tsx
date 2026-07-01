@@ -55,12 +55,13 @@ const Navbar: React.FC<{ onLogin: () => void; onSignup: () => void }> = ({ onLog
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-zinc-950/95 backdrop-blur-lg shadow-2xl' : 'bg-transparent'}`}>
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <BarChart3 size={18} className="text-white" />
-          </div>
-          <span className="font-black text-white text-lg tracking-tight">InventoryBlind</span>
-        </div>
+       <div className="flex items-center">
+  <img
+    src="/favicon.png"
+    alt="InventoryBlind"
+    className="h-10 w-auto"
+  />
+</div>
         <div className="hidden md:flex items-center gap-8">
           {['Recursos', 'Integrações', 'Como Funciona', 'Planos'].map(l => (
             <a key={l} href={`#${l.toLowerCase().replace(' ', '-')}`} className="text-sm text-zinc-400 hover:text-white transition font-medium">{l}</a>
