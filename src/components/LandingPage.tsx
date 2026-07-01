@@ -59,7 +59,7 @@ const Navbar: React.FC<{ onLogin: () => void; onSignup: () => void }> = ({ onLog
   <img
     src="/favicon.png"
     alt="InventoryBlind"
-    className="h-10 w-auto"
+    className="h-14 w-auto"
   />
 </div>
         <div className="hidden md:flex items-center gap-8">
